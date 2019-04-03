@@ -1,0 +1,17 @@
+# File              : config.yaml
+# Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
+# Date              : 01.04.2019
+# Last Modified Date: 01.04.2019
+# Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
+
+savi:
+  auth:
+    username: <username>
+    password: <password>
+    region: <region>
+    url: <url>
+    project: <project>
+  vm:
+    image: <image-to-use>
+    network: <network-to-use>
+    secgroup: <secgroup-to-use>
