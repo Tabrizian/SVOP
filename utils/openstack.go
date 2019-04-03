@@ -14,23 +14,30 @@ import (
   "bytes"
   "log"
   "io/ioutil"
+  "encoding/json"
 
   "github.com/Tabrizian/SVOP/models"
 )
 
 type OpenStackClient struct {
-    authToken string
-    auth models.AuthConfiguration
+    AuthToken string
+    Auth models.AuthConfiguration
 }
+
 
 func NewOpenStackClient(auth models.AuthConfiguration) (*OpenStackClient, error) {
     authBody := fmt.Sprintf("{\"auth\": { " +
 		"\"tenantName\": \"%s\"," +
 		"\"passwordCredentials\": {" +
-			"\"username\": \"%s\"," +
-			"\"password\": \"%s\" }}}",
-            auth.Project, auth.Username, auth.Password)
-    resp, err := http.Post(auth.Url + "/tokens", "application/json", bytes.NewReader([]byte(authBody)))
+        "\"username\": \"%s\"," +
+        "\"password\": \"%s\" }}}",
+        auth.Project, auth.Username, auth.Password)
+
+    resp, err := http.Post(
+        auth.Url + "/tokens",
+        "application/json",
+        bytes.NewReader([]byte(authBody)),
+    )
 
     if err != nil {
         log.Fatalf("Authentication failed because %s", err)
@@ -38,14 +45,29 @@ func NewOpenStackClient(auth models.AuthConfiguration) (*OpenStackClient, error)
 
     defer resp.Body.Close()
     body, err := ioutil.ReadAll(resp.Body)
+
     if err != nil {
         log.Fatalf("Failed to read all of the response %s", err)
     }
-    log.Print(string(body))
 
-    return nil, nil
+    var result interface{}
+    err = json.Unmarshal(body, &result)
+    if err != nil {
+        log.Fatalf("Failed to read all of the response %s", err)
+    }
+    resultAsserted := result.(map[string]interface{})
+    access := resultAsserted["access"].(map[string]interface{})
+    token := access["token"].(map[string]interface{})
+
+    osClient := &OpenStackClient{
+        AuthToken: token["id"].(string),
+        Auth: auth,
+    }
+
+    return osClient, nil
 }
 
 
-func (osClient *OpenStackClient) Auth() {
+func (osClient *OpenStackClient) GetAuthToken() {
+    log.Print(osClient.AuthToken)
 }
