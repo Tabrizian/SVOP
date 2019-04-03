@@ -22,6 +22,7 @@ import (
 type OpenStackClient struct {
     AuthToken string
     Auth models.AuthConfiguration
+    NovaURL string
 }
 
 
@@ -62,6 +63,22 @@ func NewOpenStackClient(auth models.AuthConfiguration) (*OpenStackClient, error)
     osClient := &OpenStackClient{
         AuthToken: token["id"].(string),
         Auth: auth,
+    }
+
+    serviceCatalog := access["serviceCatalog"].([]interface{})
+    for _, catalog := range serviceCatalog {
+        catalogAsserted := catalog.(map[string]interface{})
+        catalogType := catalogAsserted["type"].(string)
+        if catalogType == "compute" {
+            endpoints := catalogAsserted["endpoints"].([]interface{})
+            for _, endpoint := range endpoints {
+                endpointAsserted := endpoint.(map[string]interface{})
+                region := endpointAsserted["region"].(string)
+                if region == auth.Region {
+                    osClient.NovaURL = endpointAsserted["publicURL"].(string)
+                }
+            }
+        }
     }
 
     return osClient, nil
