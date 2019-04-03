@@ -21,3 +21,8 @@
 /Godeps/
 
 # End of https://www.gitignore.io/api/go
+#
+### Project Specific ###
+#
+
+configs/config.yaml
