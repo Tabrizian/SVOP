@@ -81,7 +81,7 @@ func NewOpenStackClient(auth models.AuthConfiguration) (*OpenStackClient, error)
         }
     }
 
-    return osClient, nil
+    return osClient, err
 }
 
 
