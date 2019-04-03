@@ -15,6 +15,7 @@ vm:
   image: <image-to-use>
   network: <network-to-use>
   secgroup: <secgroup-to-use>
+  flavor: <flavor-to-use>
 
 prometheus: <prometheus-server>
 ryu: <ryu-controller-url>
