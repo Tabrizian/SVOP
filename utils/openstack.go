@@ -84,7 +84,73 @@ func NewOpenStackClient(auth models.AuthConfiguration) (*OpenStackClient, error)
     return osClient, err
 }
 
+func authRequest(verb string, url string, body string, authToken string) []byte {
+    req, err := http.NewRequest(verb, url, bytes.NewReader([]byte(body)))
+    if verb == "POST" {
+        req, err = http.NewRequest(verb, url, bytes.NewReader([]byte(body)))
+    } else {
+        req, err = http.NewRequest(verb, url, nil)
+    }
+
+    if err != nil {
+        log.Fatalf("An error occured in creation of new request %s", err)
+    }
+
+    client := &http.Client{}
+    req.Header.Add("X-Auth-Token", authToken)
+
+    resp, err := client.Do(req)
+    if err != nil {
+        log.Fatalf("An error occured in fetching the result - %s", err)
+    }
+
+    defer resp.Body.Close()
+    bodyByte, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        log.Fatalf("An error occurred in reading all of the error response body - %s", err)
+    }
+
+    return bodyByte
+}
 
 func (osClient *OpenStackClient) GetAuthToken() {
-    log.Print(osClient.AuthToken)
+}
+
+func (osClient *OpenStackClient) GetFlavorID(flavor string) string {
+
+    body := authRequest("GET", osClient.NovaURL + "/flavors", "", osClient.AuthToken)
+
+    var result interface{}
+    err := json.Unmarshal(body, &result)
+    if err != nil {
+        log.Fatalf("Failed to read all of the response %s", err)
+    }
+
+    resultAsserted := result.(map[string]interface{})
+    flavors := resultAsserted["flavors"].([]interface{})
+    flavorId := ""
+
+    for _, flavorItem := range flavors {
+        flavorAsserted := flavorItem.(map[string]interface{})
+        flavorName := flavorAsserted["name"].(string)
+        if flavorName == flavor {
+            flavorId = flavorAsserted["id"].(string)
+            break
+        }
+    }
+
+    return flavorId
+}
+
+func (osClient *OpenStackClient) CreateServer(name string, vmConfiguration models.VMConfiguration) {
+    flavor := osClient.GetFlavorID(vmConfiguration.Flavor)
+    image := osClient.GetImageID(vmConfiguration.Image)
+    network := osClient.GetNetwordID(vmConfiguration.Network)
+    secgroup := osClient.GetNetwordID(vmConfiguration.Secgroup)
+    reqBody := fmt.Sprintf("{ \"server\": { \"name\": \"%s\", " +
+        "\"flavorRef\": \"%s\", \"imageRef\": \"%s\", " +
+        "\"networks\": [{ \"uuid\": \"%s\"}], \"security_groups\": [{" +
+        "\"name\": %s }]}}", name, flavor, image, network, secgroup)
+
+    body := authRequest("POST", osClient.NovaURL + "/servers", respBody, osClient.AuthToken)
 }
