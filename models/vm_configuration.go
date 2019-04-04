@@ -14,4 +14,5 @@ type VMConfiguration struct {
     Image string
     Network string
     Secgroup string
+    Flavor string
 }
