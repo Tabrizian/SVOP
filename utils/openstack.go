@@ -23,6 +23,7 @@ type OpenStackClient struct {
     AuthToken string
     Auth models.AuthConfiguration
     NovaURL string
+    NetworkURL string
 }
 
 
@@ -79,6 +80,16 @@ func NewOpenStackClient(auth models.AuthConfiguration) (*OpenStackClient, error)
                 }
             }
         }
+        if catalogType == "network" {
+            endpoints := catalogAsserted["endpoints"].([]interface{})
+            for _, endpoint := range endpoints {
+                endpointAsserted := endpoint.(map[string]interface{})
+                region := endpointAsserted["region"].(string)
+                if region == auth.Region {
+                    osClient.NetworkURL = endpointAsserted["publicURL"].(string)
+                }
+            }
+        }
     }
 
     return osClient, err
@@ -88,6 +99,7 @@ func authRequest(verb string, url string, body string, authToken string) []byte 
     req, err := http.NewRequest(verb, url, bytes.NewReader([]byte(body)))
     if verb == "POST" {
         req, err = http.NewRequest(verb, url, bytes.NewReader([]byte(body)))
+        req.Header.Add("Content-Type", "application/json")
     } else {
         req, err = http.NewRequest(verb, url, nil)
     }
@@ -142,15 +154,95 @@ func (osClient *OpenStackClient) GetFlavorID(flavor string) string {
     return flavorId
 }
 
+func (osClient *OpenStackClient) GetNetworkID(network string) string {
+
+    body := authRequest("GET", osClient.NetworkURL + "/v2.0/networks", "", osClient.AuthToken)
+
+    var result interface{}
+    err := json.Unmarshal(body, &result)
+    if err != nil {
+        log.Fatalf("Failed to read all of the response %s", err)
+    }
+
+    resultAsserted := result.(map[string]interface{})
+    networks := resultAsserted["networks"].([]interface{})
+    networkId := ""
+
+    for _, networkItem := range networks {
+        networkAsserted := networkItem.(map[string]interface{})
+        networkName := networkAsserted["name"].(string)
+        if networkName == network {
+            networkId = networkAsserted["id"].(string)
+            break
+        }
+    }
+
+    return networkId
+}
+
+func (osClient *OpenStackClient) GetImageID(image string) string {
+
+    body := authRequest("GET", osClient.NovaURL + "/images", "", osClient.AuthToken)
+
+    var result interface{}
+    err := json.Unmarshal(body, &result)
+    if err != nil {
+        log.Fatalf("Failed to read all of the response %s", err)
+    }
+
+    resultAsserted := result.(map[string]interface{})
+    images := resultAsserted["images"].([]interface{})
+    imageId := ""
+
+    for _, imageItem := range images {
+        imageAsserted := imageItem.(map[string]interface{})
+        imageName := imageAsserted["name"].(string)
+        if imageName == image {
+            imageId = imageAsserted["id"].(string)
+            break
+        }
+    }
+
+    return imageId
+}
+
+func (osClient *OpenStackClient) GetSecgroupID(secgroup string) string {
+
+    body := authRequest("GET", osClient.NetworkURL + "/v2.0/security-groups", "", osClient.AuthToken)
+
+    var result interface{}
+    err := json.Unmarshal(body, &result)
+    if err != nil {
+        log.Fatalf("Failed to read all of the response %s", err)
+    }
+
+    resultAsserted := result.(map[string]interface{})
+    secgroups := resultAsserted["security_groups"].([]interface{})
+    secgroupId := ""
+
+    for _, secgroupItem := range secgroups {
+        secgroupAsserted := secgroupItem.(map[string]interface{})
+        secgroupName := secgroupAsserted["name"].(string)
+        if secgroupName == secgroup {
+            secgroupId = secgroupAsserted["id"].(string)
+            break
+        }
+    }
+
+    return secgroupId
+}
+
 func (osClient *OpenStackClient) CreateServer(name string, vmConfiguration models.VMConfiguration) {
     flavor := osClient.GetFlavorID(vmConfiguration.Flavor)
     image := osClient.GetImageID(vmConfiguration.Image)
-    network := osClient.GetNetwordID(vmConfiguration.Network)
-    secgroup := osClient.GetNetwordID(vmConfiguration.Secgroup)
+    network := osClient.GetNetworkID(vmConfiguration.Network)
+    secgroup := osClient.GetSecgroupID(vmConfiguration.Secgroup)
     reqBody := fmt.Sprintf("{ \"server\": { \"name\": \"%s\", " +
         "\"flavorRef\": \"%s\", \"imageRef\": \"%s\", " +
         "\"networks\": [{ \"uuid\": \"%s\"}], \"security_groups\": [{" +
-        "\"name\": %s }]}}", name, flavor, image, network, secgroup)
+        "\"name\": \"%s\" }]}}", name, flavor, image, network, secgroup)
 
-    body := authRequest("POST", osClient.NovaURL + "/servers", respBody, osClient.AuthToken)
+    body := authRequest("POST", osClient.NovaURL + "/servers", reqBody, osClient.AuthToken)
+    log.Print(osClient.NovaURL + "/servers")
+    log.Print(string(body))
 }
