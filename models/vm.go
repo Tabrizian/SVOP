@@ -17,7 +17,6 @@ import (
   "bytes"
   "encoding/json"
   "time"
-  "fmt"
 )
 
 type IOpenStackClient interface {
@@ -69,21 +68,46 @@ func (vm *VM) RefreshVM(osClient IOpenStackClient) []byte {
     return body
 }
 
+func (vm *VM) Update(osClient IOpenStackClient) {
+    resp := vm.RefreshVM(osClient)
+    var result map[string]interface{}
+    err := json.Unmarshal(resp, &result)
+    if err != nil {
+        log.Fatalf("Failed to parse JSON - %s", err)
+    }
+    server := result["server"].(map[string]interface{})
+    addresses := server["addresses"].(map[string]interface{})
+
+    var ips []string
+
+    for _, interfaceI := range addresses {
+        interfaceAsserted := interfaceI.([]interface{})
+        ip := interfaceAsserted[0].(map[string]interface{})
+
+        ips = append(ips, (ip["addr"].(string)))
+    }
+
+    vm.IP = ips
+}
+
 func (vm *VM) WaitForIP(osClient IOpenStackClient) {
     for {
         resp := vm.RefreshVM(osClient)
-        fmt.Println()
-        fmt.Println(string(resp))
         time.Sleep(1000 * time.Millisecond)
+
         var result interface{}
         err := json.Unmarshal(resp, &result)
+
         if err != nil {
             log.Fatalf("Failed to parse JSON - %s", err)
         }
+
         resultAsserted := result.(map[string]interface{})
         server := resultAsserted["server"].(map[string]interface{})
         addresses := server["addresses"].(map[string]interface{})
+
         if len(addresses) > 0 {
+            vm.Update(osClient)
             break
         }
     }
