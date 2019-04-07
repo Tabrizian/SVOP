@@ -17,11 +17,21 @@ import (
   "bytes"
   "encoding/json"
   "time"
+  "fmt"
 )
 
 type IOpenStackClient interface {
     GetAuthToken() string
     GetNovaURL() string
+    GetFlavorID() string
+    GetImageID() string
+}
+
+type IVMConfiguration interface {
+    GetImage() string
+    GetNetwork() string
+    GetSecgroup() string
+    GetFlavor() string
 }
 
 type VM struct {
@@ -58,6 +68,38 @@ func AuthRequest(verb string, url string, body string, authToken string) []byte 
     }
 
     return bodyByte
+}
+
+func NewVM(osClient IOpenStackClient, vmConfiguration IVMConfiguration) (*VM, error) {
+    flavor := osClient.GetFlavorID(vmConfiguration.GetFlavor())
+    image := osClient.GetImageID(vmConfiguration.GetImage())
+    network := osClient.GetNetworkID(vmConfiguration.GetNetwork())
+    secgroup := osClient.GetSecgroupID(vmConfiguration.GetSecgroup())
+    reqBody := fmt.Sprintf("{ \"server\": { \"name\": \"%s\", " +
+        "\"flavorRef\": \"%s\", \"imageRef\": \"%s\", " +
+        "\"networks\": [{ \"uuid\": \"%s\"}], \"security_groups\": [{" +
+        "\"name\": \"%s\" }]}}", name, flavor, image, network, secgroup)
+
+    body := AuthRequest("POST", osClient.GetNovaURL() + "/servers", reqBody, osClient.GetAuthToken())
+
+    var result interface{}
+    err := json.Unmarshal(body, &result)
+    if err != nil {
+        log.Fatalf("Failed to read all of the response %s", err)
+    }
+
+    resultAsserted := result.(map[string]interface{})
+    server := resultAsserted["server"]
+    serverAsserted := server.(map[string]interface{})
+    id := serverAsserted["id"].(string)
+    fmt.Print(id)
+
+    vm := &models.VM{
+        Name: name,
+        Id: id,
+    }
+
+    return vm
 }
 
 
