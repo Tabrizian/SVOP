@@ -2,7 +2,7 @@
  * File              : openstack.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 01.04.2019
- * Last Modified Date: 03.04.2019
+ * Last Modified Date: 07.04.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -95,47 +95,15 @@ func NewOpenStackClient(auth models.AuthConfiguration) (*OpenStackClient, error)
     return osClient, err
 }
 
-func authRequest(verb string, url string, body string, authToken string) []byte {
-    req, err := http.NewRequest(verb, url, bytes.NewReader([]byte(body)))
-    if verb == "POST" {
-        req, err = http.NewRequest(verb, url, bytes.NewReader([]byte(body)))
-        req.Header.Add("Content-Type", "application/json")
-    } else {
-        req, err = http.NewRequest(verb, url, nil)
-    }
-
-    if err != nil {
-        log.Fatalf("An error occured in creation of new request %s", err)
-    }
-
-    client := &http.Client{}
-    req.Header.Add("X-Auth-Token", authToken)
-
-    resp, err := client.Do(req)
-    if err != nil {
-        log.Fatalf("An error occured in fetching the result - %s", err)
-    }
-
-    defer resp.Body.Close()
-    bodyByte, err := ioutil.ReadAll(resp.Body)
-    if err != nil {
-        log.Fatalf("An error occurred in reading all of the error response body - %s", err)
-    }
-
-    return bodyByte
-}
-
-func (osClient *OpenStackClient) GetAuthToken() {
-}
 
 func (osClient *OpenStackClient) GetFlavorID(flavor string) string {
 
-    body := authRequest("GET", osClient.NovaURL + "/flavors", "", osClient.AuthToken)
+    body := AuthRequest("GET", osClient.NovaURL + "/flavors", "", osClient.AuthToken)
 
     var result interface{}
     err := json.Unmarshal(body, &result)
     if err != nil {
-        log.Fatalf("Failed to read all of the response %s", err)
+        log.Fatalf("Failed to parse json - %s", err)
     }
 
     resultAsserted := result.(map[string]interface{})
@@ -156,7 +124,7 @@ func (osClient *OpenStackClient) GetFlavorID(flavor string) string {
 
 func (osClient *OpenStackClient) GetNetworkID(network string) string {
 
-    body := authRequest("GET", osClient.NetworkURL + "/v2.0/networks", "", osClient.AuthToken)
+    body := AuthRequest("GET", osClient.NetworkURL + "/v2.0/networks", "", osClient.AuthToken)
 
     var result interface{}
     err := json.Unmarshal(body, &result)
@@ -182,7 +150,7 @@ func (osClient *OpenStackClient) GetNetworkID(network string) string {
 
 func (osClient *OpenStackClient) GetImageID(image string) string {
 
-    body := authRequest("GET", osClient.NovaURL + "/images", "", osClient.AuthToken)
+    body := AuthRequest("GET", osClient.NovaURL + "/images", "", osClient.AuthToken)
 
     var result interface{}
     err := json.Unmarshal(body, &result)
@@ -208,7 +176,7 @@ func (osClient *OpenStackClient) GetImageID(image string) string {
 
 func (osClient *OpenStackClient) GetSecgroupID(secgroup string) string {
 
-    body := authRequest("GET", osClient.NetworkURL + "/v2.0/security-groups", "", osClient.AuthToken)
+    body := AuthRequest("GET", osClient.NetworkURL + "/v2.0/security-groups", "", osClient.AuthToken)
 
     var result interface{}
     err := json.Unmarshal(body, &result)
@@ -232,7 +200,7 @@ func (osClient *OpenStackClient) GetSecgroupID(secgroup string) string {
     return secgroupId
 }
 
-func (osClient *OpenStackClient) CreateServer(name string, vmConfiguration models.VMConfiguration) {
+func (osClient *OpenStackClient) CreateServer(name string, vmConfiguration models.VMConfiguration) (*models.VM) {
     flavor := osClient.GetFlavorID(vmConfiguration.Flavor)
     image := osClient.GetImageID(vmConfiguration.Image)
     network := osClient.GetNetworkID(vmConfiguration.Network)
@@ -242,7 +210,33 @@ func (osClient *OpenStackClient) CreateServer(name string, vmConfiguration model
         "\"networks\": [{ \"uuid\": \"%s\"}], \"security_groups\": [{" +
         "\"name\": \"%s\" }]}}", name, flavor, image, network, secgroup)
 
-    body := authRequest("POST", osClient.NovaURL + "/servers", reqBody, osClient.AuthToken)
-    log.Print(osClient.NovaURL + "/servers")
-    log.Print(string(body))
+    body := AuthRequest("POST", osClient.NovaURL + "/servers", reqBody, osClient.AuthToken)
+
+    var result interface{}
+    err := json.Unmarshal(body, &result)
+    if err != nil {
+        log.Fatalf("Failed to read all of the response %s", err)
+    }
+
+    resultAsserted := result.(map[string]interface{})
+    server := resultAsserted["server"]
+    serverAsserted := server.(map[string]interface{})
+    id := serverAsserted["id"].(string)
+    fmt.Print(id)
+
+    vm := &models.VM{
+        Name: name,
+        Id: id,
+    }
+
+    return vm
 }
+
+func (osClient *OpenStackClient) GetAuthToken() string {
+    return osClient.AuthToken
+}
+
+func (osClient *OpenStackClient) GetNovaURL() string {
+    return osClient.NovaURL
+}
+
