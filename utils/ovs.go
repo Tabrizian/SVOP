@@ -9,15 +9,21 @@ package utils
 
 import (
     "io/ioutil"
-    "io"
     "log"
-    "os"
 
     "golang.org/x/crypto/ssh"
     "github.com/Tabrizian/SVOP/models"
 )
 
-func installOVS (vm models.VM) {
+func InstallOVS (vm models.VM) {
+    cmd := "dpkg -l | grep openvswitch"
+    stdOut, _ := RunCommand(vm, cmd)
+    if string(stdOut) == "" {
+        log.Print("Open vSwitch is not installed, installing now...")
+        cmd = "sudo apt-get update && sudo apt-get install -y openvswitch-switch"
+        RunCommand(vm, cmd)
+        log.Print("Open vSwitch is not installed, installing now...")
+    }
 }
 
 func PublicKeyFile(file string) ssh.AuthMethod {
@@ -33,14 +39,14 @@ func PublicKeyFile(file string) ssh.AuthMethod {
     return ssh.PublicKeys(key)
 }
 
-func CreateSSHClient(ip string, cmd string) {
+func RunCommand(vm models.VM, cmd string) ([]byte, []byte) {
     sshConfig := &ssh.ClientConfig{
         User: "ubuntu",
         Auth: []ssh.AuthMethod{PublicKeyFile("/home/iman/.ssh/id_rsa")},
         HostKeyCallback: ssh.InsecureIgnoreHostKey(),
     }
 
-    connection, err := ssh.Dial("tcp", ip, sshConfig)
+    connection, err := ssh.Dial("tcp", vm.IP[0] + ":22", sshConfig)
     if err != nil {
         log.Fatalf("Failed to dial: %s", err)
     }
@@ -52,18 +58,31 @@ func CreateSSHClient(ip string, cmd string) {
     }
     log.Println("Creating new session")
 
-    defer session.Close()
-
     sessionStdOut, err := session.StdoutPipe()
     if err != nil {
         log.Fatalf("Failed to create session pipe: %s", err)
     }
 
-    go io.Copy(os.Stdout, sessionStdOut)
+    sessionStdErr, err := session.StderrPipe()
+    if err != nil {
+        log.Fatalf("Failed to create session pipe: %s", err)
+    }
 
     err = session.Run(cmd)
     if err != nil {
-        log.Fatalf("Failed to run the command: %s", err)
+        log.Printf("Command status code problematic: %s", err)
     }
-    log.Println("Reached the end of function")
+
+    stdOutByte, err := ioutil.ReadAll(sessionStdOut)
+    if err != nil {
+        log.Fatalf("Failed to read all of the SSH output: %s", err)
+    }
+
+    stdErrByte, err := ioutil.ReadAll(sessionStdErr)
+    if err != nil {
+        log.Fatalf("Failed to read all of the SSH output: %s", err)
+    }
+
+    return stdOutByte, stdErrByte
 }
+
