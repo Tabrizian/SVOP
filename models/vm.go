@@ -2,7 +2,7 @@
  * File              : vm.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 04.04.2019
- * Last Modified Date: 07.04.2019
+ * Last Modified Date: 08.04.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 package models
@@ -23,8 +23,10 @@ import (
 type IOpenStackClient interface {
     GetAuthToken() string
     GetNovaURL() string
-    GetFlavorID() string
-    GetImageID() string
+    GetFlavorID(string) string
+    GetImageID(string) string
+    GetNetworkID(string) string
+    GetSecgroupID(string) string
 }
 
 type IVMConfiguration interface {
@@ -70,7 +72,7 @@ func AuthRequest(verb string, url string, body string, authToken string) []byte 
     return bodyByte
 }
 
-func NewVM(osClient IOpenStackClient, vmConfiguration IVMConfiguration) (*VM, error) {
+func NewVM(osClient IOpenStackClient, name string, vmConfiguration IVMConfiguration) (*VM, error) {
     flavor := osClient.GetFlavorID(vmConfiguration.GetFlavor())
     image := osClient.GetImageID(vmConfiguration.GetImage())
     network := osClient.GetNetworkID(vmConfiguration.GetNetwork())
@@ -94,12 +96,41 @@ func NewVM(osClient IOpenStackClient, vmConfiguration IVMConfiguration) (*VM, er
     id := serverAsserted["id"].(string)
     fmt.Print(id)
 
-    vm := &models.VM{
+    vm := &VM{
         Name: name,
         Id: id,
     }
+    vm.WaitForIP(osClient)
+    vm.Update(osClient)
 
-    return vm
+    return vm, err
+}
+
+func GetVM(osClient IOpenStackClient, id string) (*VM, error) {
+    vm := &VM{
+        Id: id,
+    }
+    resp := vm.RefreshVM(osClient)
+    var result map[string]interface{}
+    err := json.Unmarshal(resp, &result)
+    if err != nil {
+        log.Fatalf("Failed to parse JSON - %s", err)
+    }
+    server := result["server"].(map[string]interface{})
+    addresses := server["addresses"].(map[string]interface{})
+
+    var ips []string
+
+    for _, interfaceI := range addresses {
+        interfaceAsserted := interfaceI.([]interface{})
+        ip := interfaceAsserted[0].(map[string]interface{})
+
+        ips = append(ips, (ip["addr"].(string)))
+    }
+
+    vm.IP = ips
+
+    return vm, err
 }
 
 
