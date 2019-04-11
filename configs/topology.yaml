@@ -6,9 +6,9 @@
 
 sw1:
   - endpoint: h1
-    ip: 192.168.200.100
+    ip: 192.168.200.10
+  - endpoint: sw2
 
 sw2:
   - endpoint: h2
     ip: 192.168.200.100
-  - endpoint: sw1
