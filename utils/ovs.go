@@ -109,6 +109,8 @@ func RunCommand(vm models.VM, cmd string) ([]byte, []byte) {
 	if err != nil {
 		log.Fatalf("Failed to read all of the SSH output: %s", err)
 	}
+	log.Println(string(stdOutByte))
+	log.Println("Error: " + string(stdErrByte))
 
 	return stdOutByte, stdErrByte
 }
