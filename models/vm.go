@@ -35,10 +35,11 @@ type IVMConfiguration interface {
 }
 
 type VM struct {
-	Name     string
-	IP       []string
-	Id       string
-	OsClient IOpenStackClient
+	Name      string
+	IP        []string
+	OverlayIp string
+	Id        string
+	OsClient  IOpenStackClient
 }
 
 func AuthRequest(verb string, url string, body string, authToken string) []byte {
@@ -152,6 +153,19 @@ func GetVMByName(osClient IOpenStackClient, name string) (*VM, error) {
 	id := server["id"].(string)
 
 	return GetVM(osClient, id)
+}
+
+func CreateOrFindVM(osClient IOpenStackClient, name string, vmConfiguration IVMConfiguration) (*VM, error) {
+	vm, err := GetVMByName(osClient, name)
+	if err != nil {
+		log.Printf("VM exists or there are multiple versions of it: %s", err)
+		vm, err = NewVM(osClient, name, vmConfiguration)
+		if err != nil {
+			return nil, errors.Wrap(err, "VM creation was not successful")
+		}
+		return vm, nil
+	}
+	return vm, nil
 }
 
 func (vm *VM) RefreshVM() []byte {
