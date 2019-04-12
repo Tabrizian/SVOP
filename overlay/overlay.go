@@ -2,7 +2,7 @@
 * File              : overlay.go
 * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
 * Date              : 10.04.2019
-* Last Modified Date: 11.04.2019
+* Last Modified Date: 12.04.2019
 * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -58,16 +58,19 @@ func connectNodes(node1 models.VM, node2 models.VM) {
 func DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{}, vmConfiguration models.VMConfiguration) {
 	var switches map[string]models.VM
 	var hosts map[string]models.VM
+	var defaultOverlayAddress string
+	var gatewayIp string
 
 	switches = make(map[string]models.VM)
 	hosts = make(map[string]models.VM)
 
 	for sw, connections := range overlay {
 		var vmSrc models.VM
+		_ = vmSrc
 		if val, ok := switches[sw]; ok {
 			vmSrc = val
 		} else {
-			vmObj, err := models.NewVM(&osClient, sw, &vmConfiguration)
+			vmObj, err := models.CreateOrFindVM(&osClient, sw, &vmConfiguration)
 			log.Printf("New VM %s\n", vmObj.Name)
 			if err != nil {
 				log.Fatalf("VM creation failed")
@@ -92,27 +95,37 @@ func DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{
 
 			endpoint := connectionString["endpoint"]
 			var endpointVM models.VM
+			_ = endpointVM
 
 			// Is it a host
 			if _, ok := connectionString["ip"]; ok {
 				if val, ok := hosts[endpoint]; ok {
 					endpointVM = val
 				} else {
-					vmObject, err := models.NewVM(&osClient, endpoint, &vmConfiguration)
+					vmObject, err := models.CreateOrFindVM(&osClient, endpoint, &vmConfiguration)
 					log.Printf("New VM %s\n", vmObject.Name)
 					if err != nil {
 						log.Fatalf("VM creation failed")
 					}
+					ip := connectionString["ip"]
+					vmObject.OverlayIp = ip
 					hosts[endpoint] = *vmObject
 					endpointVM = *vmObject
-					ip := connectionString["ip"]
 					utils.SetOverlayInterface(hosts[endpoint], ip)
+
+					// Setup the NAT and configure iptables
+					if _, ok := connectionString["default"]; ok {
+						defaultOverlayAddress = ip
+						gatewayIp = vmObject.IP[0]
+						utils.RunCommand(endpointVM, "sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE")
+						utils.RunCommand(endpointVM, "sudo iptables -P FORWARD ACCEPT")
+					}
 				}
 			} else {
 				if val, ok := switches[endpoint]; ok {
 					endpointVM = val
 				} else {
-					vmObject, err := models.NewVM(&osClient, endpoint, &vmConfiguration)
+					vmObject, err := models.CreateOrFindVM(&osClient, endpoint, &vmConfiguration)
 					log.Printf("New VM %s\n", vmObject.Name)
 					if err != nil {
 						log.Fatalf("VM creation failed")
@@ -123,7 +136,15 @@ func DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{
 				}
 			}
 			connectNodes(vmSrc, endpointVM)
+		}
+	}
 
+	log.Println("Replacing default gateway with the new gateway")
+	for _, vm := range hosts {
+		if vm.OverlayIp != defaultOverlayAddress {
+			out, _ := utils.RunCommandFromOverlay(vm, "route | awk 'NR==3{print $2}'", gatewayIp)
+			utils.RunCommandFromOverlay(vm, "sudo route add default gw "+defaultOverlayAddress, gatewayIp)
+			utils.RunCommandFromOverlay(vm, "sudo route del default gw "+string(out), gatewayIp)
 		}
 	}
 }
