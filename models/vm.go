@@ -2,7 +2,7 @@
 * File              : vm.go
 * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
 * Date              : 04.04.2019
-* Last Modified Date: 11.04.2019
+* Last Modified Date: 12.04.2019
 * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 package models
@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -130,6 +131,27 @@ func GetVM(osClient IOpenStackClient, id string) (*VM, error) {
 	vm.IP = ips
 
 	return vm, err
+}
+
+func GetVMByName(osClient IOpenStackClient, name string) (*VM, error) {
+	resp := AuthRequest("GET", osClient.GetNovaURL()+"/servers?name=^"+name, "", osClient.GetAuthToken())
+	var result map[string]interface{}
+	err := json.Unmarshal(resp, &result)
+	if err != nil {
+		return nil, errors.Wrap(err, "couldn't parse JSON")
+	}
+
+	servers := result["servers"].([]interface{})
+	if len(servers) > 1 {
+		return nil, errors.New("More than one server with this name exists")
+	} else if len(servers) == 0 {
+		return nil, errors.New("No server with this name exist")
+	}
+
+	server := servers[0].(map[string]interface{})
+	id := server["id"].(string)
+
+	return GetVM(osClient, id)
 }
 
 func (vm *VM) RefreshVM() []byte {
