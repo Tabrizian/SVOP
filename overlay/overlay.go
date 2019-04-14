@@ -2,7 +2,7 @@
 * File              : overlay.go
 * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
 * Date              : 10.04.2019
-* Last Modified Date: 12.04.2019
+* Last Modified Date: 14.04.2019
 * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -55,7 +55,7 @@ func connectNodes(node1 models.VM, node2 models.VM) {
 	utils.RunCommand(node2, cmd)
 }
 
-func DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{}, vmConfiguration models.VMConfiguration) {
+func DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{}, vmConfiguration models.VMConfiguration, ctrlEndpoint string) {
 	var switches map[string]models.VM
 	var hosts map[string]models.VM
 	var defaultOverlayAddress string
@@ -112,6 +112,7 @@ func DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{
 					hosts[endpoint] = *vmObject
 					endpointVM = *vmObject
 					utils.SetOverlayInterface(hosts[endpoint], ip)
+					utils.RunCommand(hosts[endpoint], "sudo ovs-vsctl set bridge br1 protocols=OpenFlow10")
 
 					// Setup the NAT and configure iptables
 					if _, ok := connectionString["default"]; ok {
@@ -142,9 +143,16 @@ func DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{
 	log.Println("Replacing default gateway with the new gateway")
 	for _, vm := range hosts {
 		if vm.OverlayIp != defaultOverlayAddress {
+			utils.RunCommand(vm, "sshpass -p savi ssh -o StrictHostKeyChecking=no ubuntu@"+gatewayIp+" ping -c 5 "+vm.OverlayIp)
 			out, _ := utils.RunCommandFromOverlay(vm, "route | awk 'NR==3{print $2}'", gatewayIp)
 			utils.RunCommandFromOverlay(vm, "sudo route add default gw "+defaultOverlayAddress, gatewayIp)
 			utils.RunCommandFromOverlay(vm, "sudo route del default gw "+string(out), gatewayIp)
 		}
+	}
+
+	log.Println("Setting the controller for switches")
+	for _, sw := range switches {
+		utils.RunCommand(sw, "sudo ovs-vsctl set bridge br1 protocols=OpenFlow10")
+		utils.SetController(sw, ctrlEndpoint+":6633")
 	}
 }
