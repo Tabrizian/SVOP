@@ -2,7 +2,7 @@
  * File              : ovs.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 04.04.2019
- * Last Modified Date: 10.04.2019
+ * Last Modified Date: 14.04.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 package utils
@@ -24,13 +24,20 @@ func InstallOVS(vm models.VM) {
 		log.Print("Open vSwitch is not installed, installing now...")
 		cmd = "sudo apt-get update && sudo apt-get install -y openvswitch-switch"
 		log.Print("Open vSwitch is not installed, installing now...")
-		output, _ := RunCommand(vm, cmd)
-		log.Println(output)
+		RunCommand(vm, cmd)
+	}
+	cmd = "dpkg -l | grep sshpass"
+	stdOut, _ = RunCommand(vm, cmd)
+	if string(stdOut) == "" {
+		cmd = "sudo apt-get install -y sshpass"
+		log.Print("sshpass is not installed, installing now...")
+		RunCommand(vm, cmd)
 	}
 }
 
 func SetController(vm models.VM, ctrlEndpoint string) {
 	ovsName := "br1"
+	InstallOVS(vm)
 	cmd := fmt.Sprintf("sudo ovs-vsctl set-controller %s tcp:%s", ovsName, ctrlEndpoint)
 	output, _ := RunCommand(vm, cmd)
 	log.Println(output)
@@ -62,6 +69,11 @@ func PublicKeyFile(file string) ssh.AuthMethod {
 }
 
 func RunCommand(vm models.VM, cmd string) ([]byte, []byte) {
+	return RunCommandOverSSH(vm.IP[0], cmd)
+}
+
+func RunCommandOverSSH(ip string, cmd string) ([]byte, []byte) {
+	log.Printf("Running command %s\n", cmd)
 	sshConfig := &ssh.ClientConfig{
 		User: "ubuntu",
 		Auth: []ssh.AuthMethod{
@@ -71,13 +83,13 @@ func RunCommand(vm models.VM, cmd string) ([]byte, []byte) {
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 
-	connection, err := ssh.Dial("tcp", vm.IP[0]+":22", sshConfig)
+	connection, err := ssh.Dial("tcp", ip+":22", sshConfig)
 	for err != nil {
 		log.Printf("Failed to dial: %s", err)
-		connection, err = ssh.Dial("tcp", vm.IP[0]+":22", sshConfig)
+		connection, err = ssh.Dial("tcp", ip+":22", sshConfig)
 		time.Sleep(5000 * time.Millisecond)
 	}
-	log.Println("Initiating SSH connection")
+	log.Println("Initiating SSH connection to " + ip)
 
 	session, err := connection.NewSession()
 	if err != nil {
@@ -97,6 +109,7 @@ func RunCommand(vm models.VM, cmd string) ([]byte, []byte) {
 
 	err = session.Run(cmd)
 	if err != nil {
+		// If grep doens't provide any output this will be printed
 		log.Printf("Command status code problematic: %s", err)
 	}
 
@@ -113,4 +126,9 @@ func RunCommand(vm models.VM, cmd string) ([]byte, []byte) {
 	log.Println("Error: " + string(stdErrByte))
 
 	return stdOutByte, stdErrByte
+}
+
+func RunCommandFromOverlay(vm models.VM, cmd string, overlayIP string) ([]byte, []byte) {
+	cmdToBeExec := fmt.Sprintf("sshpass -p savi ssh -o StrictHostKeyChecking=no ubuntu@%s %s", vm.OverlayIp, cmd)
+	return RunCommandOverSSH(overlayIP, cmdToBeExec)
 }
