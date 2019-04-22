@@ -2,7 +2,7 @@
  * File              : ryu.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 14.04.2019
- * Last Modified Date: 14.04.2019
+ * Last Modified Date: 15.04.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 package utils
@@ -10,6 +10,7 @@ package utils
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/RyanCarrier/dijkstra"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"log"
@@ -32,6 +33,16 @@ type RyuPort struct {
 type RyuSwitch struct {
 	Ports []RyuPort
 	Dpid  string
+}
+
+type Rule struct {
+	Dl_src   string
+	Dl_dst   string
+	In_port  int
+	Dl_type  int
+	Nw_proto int
+	Tp_dst   int
+	Priority int
 }
 
 func NewRyuClient(URL string) (*RyuClient, error) {
@@ -84,10 +95,12 @@ func (ryuClient *RyuClient) GetSwitches() ([]RyuSwitch, error) {
 	return result, nil
 }
 
-func (ryuClient *RyuClient) CreatePath(src string, dst string) {
+func (ryuClient *RyuClient) FindShortestPath(src string, dst string) []string {
 	connections := make(map[string][]string)
 	graph := make(map[string][]string)
 	switches, _ := ryuClient.GetSwitches()
+	var srcAddress string
+	var dstAddress string
 	for _, sw := range switches {
 		for _, port := range sw.Ports {
 			graph[sw.Dpid] = append(graph[sw.Dpid], sw.Dpid+"/"+port.Port_no)
@@ -99,12 +112,54 @@ func (ryuClient *RyuClient) CreatePath(src string, dst string) {
 	}
 
 	for node, connection := range connections {
-		src := strings.Split(node, "-")[0]
-		if src[0] != 'h' {
+		srcH := strings.Split(node, "-")[0]
+		if srcH[0] != 'h' {
 			graph[connection[0]] = append(graph[connection[0]], connection[1])
 			graph[connection[1]] = append(graph[connection[1]], connection[0])
+		} else {
+			if srcH == src {
+				srcAddress = connection[0]
+			} else if srcH == dst {
+				dstAddress = connection[0]
+			}
 		}
 	}
 
-	log.Println(graph)
+	var nodes map[string]int
+	var nodesDecode map[int]string
+	nodes = make(map[string]int)
+	nodesDecode = make(map[int]string)
+	graphDJ := dijkstra.NewGraph()
+	index := 0
+	for vertex, _ := range graph {
+		nodes[vertex] = index
+		graphDJ.AddVertex(index)
+		index = index + 1
+	}
+
+	for vertex, connections := range graph {
+		for _, connection := range connections {
+			graphDJ.AddArc(nodes[vertex], nodes[connection], 1)
+		}
+	}
+
+	var bestPath []string
+
+	best, err := graphDJ.Shortest(nodes[srcAddress], nodes[dstAddress])
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for k, v := range nodes {
+		nodesDecode[v] = k
+	}
+
+	for _, item := range best.Path {
+		bestPath = append(bestPath, nodesDecode[item])
+	}
+
+	return bestPath
+}
+
+func (ryuClient *RyuClient) InstallFlow(flowRule Rule, dpid string) {
 }
