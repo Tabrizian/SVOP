@@ -2,7 +2,7 @@
  * File              : ovs.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 04.04.2019
- * Last Modified Date: 14.04.2019
+ * Last Modified Date: 15.04.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 package utils
@@ -33,11 +33,47 @@ func InstallOVS(vm models.VM) {
 		log.Print("sshpass is not installed, installing now...")
 		RunCommand(vm, cmd)
 	}
+
+	cmd = "sudo sed -i 's/ExecStart=.*/ExecStart=\\/usr\\/bin\\/dockerd -H fd:\\/\\/ -H 0\\.0\\.0\\.0/g' /lib/systemd/system/docker.service"
+	RunCommand(vm, cmd)
+
+	cmd = "docker run --volume=/:/rootfs:ro --volume=/var/run:/var/run:ro --volume=/sys:/sys:ro   --volume=/var/lib/docker/:/var/lib/docker:ro   --volume=/dev/disk/:/dev/disk:ro   --publish=8080:8080   --detach=true   --name=cadvisor --restart always  google/cadvisor:latest"
+	RunCommand(vm, cmd)
+
+	cmd = "curl -LO https://github.com/prometheus/node_exporter/releases/download/v0.17.0/node_exporter-0.17.0.linux-amd64.tar.gz"
+	RunCommand(vm, cmd)
+
+	cmd = "tar xzf node_exporter-0.17.0.linux-amd64.tar.gz && cd node_exporter-0.17.0.linux-amd64 && sudo mv ./node_exporter /usr/local/bin/"
+	RunCommand(vm, cmd)
+
+	cmd = "sudo useradd -rs /bin/false node_exporter"
+	RunCommand(vm, cmd)
+
+	cmd = `
+[Unit] 
+Description=Node Exporter 
+After=network.target 
+
+[Service] 
+User=node_exporter 
+Group=node_exporter 
+Type=simple 
+ExecStart=/usr/local/bin/node_exporter
+
+[Install]
+WantedBy=multi-user.target
+`
+
+	RunCommand(vm, "sudo bash -c \"echo '"+cmd+"' > /etc/systemd/system/node_exporter.service\"")
+	RunCommand(vm, "sudo systemctl daemon-reload")
+	RunCommand(vm, "sudo systemctl start node_exporter")
+	RunCommand(vm, "sudo systemctl restart docker")
+	RunCommand(vm, "sudo systemctl enable node_exporter")
+
 }
 
 func SetController(vm models.VM, ctrlEndpoint string) {
 	ovsName := "br1"
-	InstallOVS(vm)
 	cmd := fmt.Sprintf("sudo ovs-vsctl set-controller %s tcp:%s", ovsName, ctrlEndpoint)
 	output, _ := RunCommand(vm, cmd)
 	log.Println(output)
@@ -45,7 +81,6 @@ func SetController(vm models.VM, ctrlEndpoint string) {
 
 func SetOverlayInterface(vm models.VM, hostOverlayIP string) {
 	log.Printf("Setting overlay for %s with IP %s\n", vm.Name, hostOverlayIP)
-	InstallOVS(vm)
 	RunCommand(vm, "sudo ovs-vsctl --may-exist add-br br1")
 	if hostOverlayIP != "" {
 		RunCommand(vm, "sudo ovs-vsctl --may-exist add-port "+
