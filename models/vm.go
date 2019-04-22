@@ -2,7 +2,7 @@
 * File              : vm.go
 * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
 * Date              : 04.04.2019
-* Last Modified Date: 12.04.2019
+* Last Modified Date: 13.04.2019
 * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 package models
@@ -158,7 +158,7 @@ func GetVMByName(osClient IOpenStackClient, name string) (*VM, error) {
 func CreateOrFindVM(osClient IOpenStackClient, name string, vmConfiguration IVMConfiguration) (*VM, error) {
 	vm, err := GetVMByName(osClient, name)
 	if err != nil {
-		log.Printf("VM exists or there are multiple versions of it: %s", err)
+		log.Printf("VM doesn't exist or there are multiple versions of it: %s", err)
 		vm, err = NewVM(osClient, name, vmConfiguration)
 		if err != nil {
 			return nil, errors.Wrap(err, "VM creation was not successful")
