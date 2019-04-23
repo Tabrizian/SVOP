@@ -2,7 +2,7 @@
  * File              : main.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 07.04.2019
- * Last Modified Date: 11.04.2019
+ * Last Modified Date: 22.04.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 package main
@@ -46,6 +46,5 @@ func main() {
 	}
 
 	osClientD := *osClient
-
-	overlay.DeployOverlay(osClientD, result, configuration.VM)
+	overlay.DeployOverlay(osClientD, result, configuration.VM, viper.Get("controller.address").(string))
 }
