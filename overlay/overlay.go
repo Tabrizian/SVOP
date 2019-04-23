@@ -13,6 +13,7 @@ import (
 	"log"
 
 	"math/rand"
+	"time"
 
 	"github.com/Tabrizian/SVOP/models"
 	"github.com/Tabrizian/SVOP/utils"
@@ -23,6 +24,7 @@ var vnis []int
 type Host struct {
 	Gateway   bool
 	OverlayIP string
+	Name      string
 }
 
 func generateVNI() int {
@@ -48,10 +50,6 @@ func generateVNI() int {
 
 func connectNodes(node1 models.VM, node2 models.VM) {
 	log.Printf("Making VXLAN between %s and %s\n", node1.Name, node2.Name)
-
-	// Ensure OVS daemon is up and running in both nodes
-	utils.InstallOVS(node1)
-	utils.InstallOVS(node2)
 
 	vni := generateVNI()
 	cmd := fmt.Sprintf("sudo ovs-vsctl add-port br1 %s -- set interface %s type=vxlan options:remote_ip=%s options:key=%v", node1.Name+"-"+node2.Name, node1.Name+"-"+node2.Name, node2.IP[0], vni)
@@ -120,13 +118,16 @@ func ExtractHosts(overlay map[string]interface{}) map[string]Host {
 						host = Host{
 							OverlayIP: connectionString["ip"],
 							Gateway:   true,
+							Name:      endpoint,
 						}
 					} else {
 						host = Host{
 							OverlayIP: connectionString["ip"],
 							Gateway:   false,
+							Name:      endpoint,
 						}
 					}
+					hosts[endpoint] = host
 				}
 			}
 		}
@@ -142,6 +143,7 @@ func ConfigureSwitch(osClient utils.OpenStackClient, name string, vmConfiguratio
 		log.Fatalf("VM creation failed")
 	}
 	vmObjD := *vmObj
+	utils.InstallOVS(vmObjD)
 	utils.SetOverlayInterface(vmObjD, "")
 	utils.RunCommand(vmObjD, "sudo ovs-vsctl set bridge br1 protocols=OpenFlow10")
 	return vmObj
@@ -154,6 +156,7 @@ func ConfigureHost(osClient utils.OpenStackClient, host Host, vmConfiguration mo
 		log.Fatalf("VM creation failed")
 	}
 	vmObjD := *vmObj
+	utils.InstallOVS(vmObjD)
 	utils.SetOverlayInterface(vmObjD, host.OverlayIP)
 	utils.RunCommand(vmObjD, "sudo ovs-vsctl set bridge br1 protocols=OpenFlow10")
 	if host.Gateway {
@@ -185,8 +188,8 @@ func DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{
 		}(sw)
 	}
 
-	for host, _ := range hostNames {
-		go func(host string) {
+	for _, host := range hostNames {
+		go func(host Host) {
 			log.Printf("Creating VM %s\n", host)
 			hostChannel <- ConfigureHost(osClient, host, vmConfiguration)
 		}(host)
@@ -194,6 +197,7 @@ func DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{
 
 	for range hostNames {
 		host := <-hostChannel
+		host.OverlayIp = hostNames[host.Name].OverlayIP
 		hosts[host.Name] = *host
 		defaultOverlayAddress = hostNames[host.Name].OverlayIP
 		gatewayIp = host.IP[0]
@@ -204,66 +208,26 @@ func DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{
 		switches[sw.Name] = *sw
 	}
 
-	// for sw, connections := range overlay {
-	// 	connectionsAsserted := connections.([]interface{})
-	// 	vmSrc := switches[sw.Name]
-	// 	for _, connection := range connectionsAsserted {
-	// 		connectionString := fixConnectionFormat(connection)
+	for sw, connections := range overlay {
+		connectionsAsserted := connections.([]interface{})
+		vmSrc := switches[sw]
+		for _, connection := range connectionsAsserted {
+			connectionString := fixConnectionFormat(connection)
 
-	// 		endpoint := connectionString["endpoint"]
-	// 		var endpointVM models.VM
-	// 		_ = endpointVM
+			endpoint := connectionString["endpoint"]
+			var endpointVM models.VM
 
-	// 		// Is it a host
-	// 		if _, ok := connectionString["ip"]; ok {
-	// 			if val, ok := hosts[endpoint]; ok {
-	// 				endpointVM = val
-	// 			} else {
-	// 				vmObject, err := models.CreateOrFindVM(&osClient, endpoint, &vmConfiguration)
-	// 				log.Printf("Working on VM %s\n", vmObject.Name)
-	// 				if err != nil {
-	// 					log.Fatalf("VM creation failed")
-	// 				}
-	// 				ip := connectionString["ip"]
-	// 				vmObject.OverlayIp = ip
-	// 				hosts[endpoint] = *vmObject
-	// 				endpointVM = *vmObject
-	// 				utils.SetOverlayInterface(hosts[endpoint], ip)
-	// 				utils.RunCommand(hosts[endpoint], "sudo ovs-vsctl set bridge br1 protocols=OpenFlow10")
-
-	// 				// Setup the NAT and configure iptables
-	// 				if _, ok := connectionString["default"]; ok {
-	// 					defaultOverlayAddress = ip
-	// 					gatewayIp = vmObject.IP[0]
-	// 					utils.RunCommand(endpointVM, "sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE")
-	// 					utils.RunCommand(endpointVM, "sudo iptables -P FORWARD ACCEPT")
-	// 				}
-	// 			}
-	// 		} else {
-	// 			if val, ok := switches[endpoint]; ok {
-	// 				endpointVM = val
-	// 			} else {
-	// 				vmObject, err := models.CreateOrFindVM(&osClient, endpoint, &vmConfiguration)
-	// 				log.Printf("Working on VM %s\n", vmObject.Name)
-	// 				if err != nil {
-	// 					log.Fatalf("VM creation failed")
-	// 				}
-	// 				switches[endpoint] = *vmObject
-	// 				endpointVM = *vmObject
-	// 				utils.SetOverlayInterface(switches[endpoint], "")
-	// 			}
-	// 		}
-	// 		connectNodes(vmSrc, endpointVM)
-	// 	}
-	// }
-
-	log.Println("Replacing default gateway with the new gateway")
-	for _, vm := range hosts {
-		if vm.OverlayIp != defaultOverlayAddress {
-			utils.RunCommand(vm, "sshpass -p savi ssh -o StrictHostKeyChecking=no ubuntu@"+gatewayIp+" bash -c 'until ping -c1 www.google.com >/dev/null 2>&1; do :; done'"+vm.OverlayIp)
-			out, _ := utils.RunCommandFromOverlay(vm, "route | awk 'NR==3{print $2}'", gatewayIp)
-			utils.RunCommandFromOverlay(vm, "sudo route add default gw "+defaultOverlayAddress, gatewayIp)
-			utils.RunCommandFromOverlay(vm, "sudo route del default gw "+string(out), gatewayIp)
+			// Is it a host
+			if _, ok := connectionString["ip"]; ok {
+				if val, ok := hosts[endpoint]; ok {
+					endpointVM = val
+				}
+			} else {
+				if val, ok := switches[endpoint]; ok {
+					endpointVM = val
+				}
+			}
+			connectNodes(vmSrc, endpointVM)
 		}
 	}
 
@@ -272,4 +236,19 @@ func DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{
 		utils.RunCommand(sw, "sudo ovs-vsctl set bridge br1 protocols=OpenFlow10")
 		utils.SetController(sw, ctrlEndpoint+":6633")
 	}
+
+	log.Println("Waiting for rules to be setup")
+	time.Sleep(30 * time.Second)
+
+	log.Println("Replacing default gateway with the new gateway")
+
+	for _, vm := range hosts {
+		if vm.OverlayIp != defaultOverlayAddress {
+			utils.RunCommand(vm, "sshpass -p savi ssh -o StrictHostKeyChecking=no ubuntu@"+gatewayIp+" ping -c10 "+vm.OverlayIp)
+			out, _ := utils.RunCommandFromOverlay(vm, "route | awk 'NR==3{print $2}'", gatewayIp)
+			utils.RunCommandFromOverlay(vm, "sudo route add default gw "+defaultOverlayAddress, gatewayIp)
+			utils.RunCommandFromOverlay(vm, "sudo route del default gw "+string(out), gatewayIp)
+		}
+	}
+
 }
