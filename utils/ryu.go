@@ -2,7 +2,7 @@
  * File              : ryu.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 14.04.2019
- * Last Modified Date: 15.04.2019
+ * Last Modified Date: 24.04.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 package utils
@@ -24,10 +24,10 @@ type RyuClient struct {
 }
 
 type RyuPort struct {
-	Hw_addr string
-	Name    string
-	Port_no string
-	Dpid    string
+	HWAddr string `json:"hw_addr"`
+	Name   string `json:"name"`
+	PortNo string `json:"port_no"`
+	DPid   string `json:"dpid"`
 }
 
 type RyuSwitch struct {
@@ -35,14 +35,28 @@ type RyuSwitch struct {
 	Dpid  string
 }
 
+type Match struct {
+	DLSrc    string `json:"dl_src"`
+	DLDst    string `json:"dl_dst"`
+	InPort   int    `json:"in_port"`
+	DLType   int    `json:"dl_type"`
+	NWSrc    string `json:"nw_src"`
+	NWDst    string `json:nw_dst"`
+	NWProto  int    `json:nw_proto"`
+	TPDst    int    `json:"tp_dst"`
+	Priority int    `json:"priority"`
+}
+
+type PortAction struct {
+	Port int    `json:"port"`
+	Type string `json:"type"`
+}
+
 type Rule struct {
-	Dl_src   string
-	Dl_dst   string
-	In_port  int
-	Dl_type  int
-	Nw_proto int
-	Tp_dst   int
-	Priority int
+	Matching Match        `json:"match"`
+	Action   []PortAction `json:"actions"`
+	Dpid     string       `json:"dpid"`
+	Priority int          `json:"priority"`
 }
 
 func NewRyuClient(URL string) (*RyuClient, error) {
@@ -161,5 +175,12 @@ func (ryuClient *RyuClient) FindShortestPath(src string, dst string) []string {
 	return bestPath
 }
 
-func (ryuClient *RyuClient) InstallFlow(flowRule Rule, dpid string) {
+func (ryuClient *RyuClient) InstallFlow(rule Rule, dpid string) error {
+	bytes, err := json.Marshal(rule)
+	if err != nil {
+		return errors.Wrap(err, "JSON parsing failed")
+	}
+
+	resp := request("POST", ryuClient.URL+"/stats/flowentry/add", string(bytes))
+	return resp
 }
