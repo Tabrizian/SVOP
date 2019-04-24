@@ -1,0 +1,11 @@
+# File              : vnfs.yaml
+# Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
+# Date              : 23.04.2019
+# Last Modified Date: 23.04.2019
+# Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
+
+snort:
+  image: networkfunction/firewall
+  location: h3
+
+
