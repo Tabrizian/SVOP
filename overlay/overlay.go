@@ -2,7 +2,7 @@
 * File              : overlay.go
 * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
 * Date              : 10.04.2019
-* Last Modified Date: 22.04.2019
+* Last Modified Date: 25.04.2019
 * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -13,6 +13,7 @@ import (
 	"log"
 
 	"math/rand"
+	"strconv"
 	"time"
 
 	"github.com/Tabrizian/SVOP/models"
@@ -25,6 +26,30 @@ type Host struct {
 	Gateway   bool
 	OverlayIP string
 	Name      string
+}
+
+type Switch struct {
+	Name string
+}
+
+type Overlay struct {
+	overlayObject map[string]interface{}
+	ryuClient     *utils.RyuClient
+	hosts         []Hosts
+	switches      []Switches
+}
+
+func NewOverlay(overlayObject map[string]interface{}, ryuClient *utils.RyuClient, osClient *utils.OpenStackClient) *Overlay {
+	overlay := &Overlay{
+		overlayObject: overlayObject,
+		ryuClient:     ryuClient,
+		osClient:      osClient,
+	}
+
+	overlay.hosts = ExtractHosts(overlay.overlayObj)
+	overlay.switches = ExtractSWs(overlay.overlayObj)
+
+	return overlay
 }
 
 func generateVNI() int {
@@ -58,8 +83,7 @@ func connectNodes(node1 models.VM, node2 models.VM) {
 	utils.RunCommand(node2, cmd)
 }
 
-func fixConnectionFormat(connection interface{}) map[string]string {
-
+func FixConnectionFormat(connection interface{}) map[string]string {
 	connectionAsserted := connection.(map[interface{}]interface{})
 	connectionString := make(map[string]string)
 	for key, value := range connectionAsserted {
@@ -74,6 +98,27 @@ func fixConnectionFormat(connection interface{}) map[string]string {
 	return connectionString
 }
 
+func (overlay *Overlay) SetupOpenFlowRules(rule Rule, src string, dst string) {
+	shortestPath := overlay.ryuClient.FindShortestPath(src, dst)
+
+	var dpid string
+	var srcPort int
+	var dstPort int
+	for index, path := range shortestPath {
+		if index%3 == 0 {
+			srcPort = strconv.Atoi(strings.Split(path, "/")[1])
+		} else if index%3 == 1 {
+			dpid = path
+		} else if index%3 == 2 {
+			dstPort = strconv.Atoi(strings.Split(path, "/")[1])
+			rule.Dpid = dpid
+			rule.Matching.InPort = srcPort
+			rule.Action[0].Port = dstPort
+			overlay.ryuClient.InstallRule(rule)
+		}
+	}
+}
+
 func ExtractSWs(overlay map[string]interface{}) map[string]struct{} {
 	var switches map[string]struct{}
 
@@ -86,7 +131,7 @@ func ExtractSWs(overlay map[string]interface{}) map[string]struct{} {
 
 		connectionsAsserted := connections.([]interface{})
 		for _, connection := range connectionsAsserted {
-			connectionString := fixConnectionFormat(connection)
+			connectionString := FixConnectionFormat(connection)
 			endpoint := connectionString["endpoint"]
 			// Is it a host
 			if _, ok := connectionString["ip"]; !ok {
@@ -108,7 +153,7 @@ func ExtractHosts(overlay map[string]interface{}) map[string]Host {
 	for _, connections := range overlay {
 		connectionsAsserted := connections.([]interface{})
 		for _, connection := range connectionsAsserted {
-			connectionString := fixConnectionFormat(connection)
+			connectionString := FixConnectionFormat(connection)
 			endpoint := connectionString["endpoint"]
 			// Is it a host
 			if _, ok := connectionString["ip"]; ok {
@@ -136,8 +181,8 @@ func ExtractHosts(overlay map[string]interface{}) map[string]Host {
 	return hosts
 }
 
-func ConfigureSwitch(osClient utils.OpenStackClient, name string, vmConfiguration models.VMConfiguration) *models.VM {
-	vmObj, err := models.CreateOrFindVM(&osClient, name, &vmConfiguration)
+func ConfigureSwitch(osClient utils.OpenStackClient, sw Switch, vmConfiguration models.VMConfiguration) *models.VM {
+	vmObj, err := models.CreateOrFindVM(&osClient, sw.Name, &vmConfiguration)
 	log.Printf("Working on switch %s\n", vmObj.Name)
 	if err != nil {
 		log.Fatalf("VM creation failed")
@@ -166,7 +211,7 @@ func ConfigureHost(osClient utils.OpenStackClient, host Host, vmConfiguration mo
 	return vmObj
 }
 
-func DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{}, vmConfiguration models.VMConfiguration, ctrlEndpoint string) {
+func (overlayObj *Overlay) DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{}, vmConfiguration models.VMConfiguration, ctrlEndpoint string) {
 	var switches map[string]models.VM
 	var hosts map[string]models.VM
 	var defaultOverlayAddress string
@@ -212,7 +257,7 @@ func DeployOverlay(osClient utils.OpenStackClient, overlay map[string]interface{
 		connectionsAsserted := connections.([]interface{})
 		vmSrc := switches[sw]
 		for _, connection := range connectionsAsserted {
-			connectionString := fixConnectionFormat(connection)
+			connectionString := FixConnectionFormat(connection)
 
 			endpoint := connectionString["endpoint"]
 			var endpointVM models.VM
