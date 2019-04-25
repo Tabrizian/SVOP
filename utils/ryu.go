@@ -2,7 +2,7 @@
  * File              : ryu.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 14.04.2019
- * Last Modified Date: 24.04.2019
+ * Last Modified Date: 25.04.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 package utils
@@ -36,15 +36,14 @@ type RyuSwitch struct {
 }
 
 type Match struct {
-	DLSrc    string `json:"dl_src"`
-	DLDst    string `json:"dl_dst"`
-	InPort   int    `json:"in_port"`
-	DLType   int    `json:"dl_type"`
-	NWSrc    string `json:"nw_src"`
-	NWDst    string `json:nw_dst"`
-	NWProto  int    `json:nw_proto"`
-	TPDst    int    `json:"tp_dst"`
-	Priority int    `json:"priority"`
+	DLSrc   string `json:"dl_src,omitempty"`
+	DLDst   string `json:"dl_dst,omitempty"`
+	InPort  int    `json:"in_port,omitempty"`
+	DLType  int    `json:"dl_type,omitempty"`
+	NWSrc   string `json:"nw_src,omitempty"`
+	NWDst   string `json:"nw_dst,omitempty"`
+	NWProto int    `json:"nw_proto,omitempty"`
+	TPDst   int    `json:"tp_dst,omitempty"`
 }
 
 type PortAction struct {
@@ -55,8 +54,8 @@ type PortAction struct {
 type Rule struct {
 	Matching Match        `json:"match"`
 	Action   []PortAction `json:"actions"`
-	Dpid     string       `json:"dpid"`
-	Priority int          `json:"priority"`
+	Dpid     int          `json:"dpid"`
+	Priority int          `json:"priority,omitempty"`
 }
 
 func NewRyuClient(URL string) (*RyuClient, error) {
@@ -117,11 +116,11 @@ func (ryuClient *RyuClient) FindShortestPath(src string, dst string) []string {
 	var dstAddress string
 	for _, sw := range switches {
 		for _, port := range sw.Ports {
-			graph[sw.Dpid] = append(graph[sw.Dpid], sw.Dpid+"/"+port.Port_no)
+			graph[sw.Dpid] = append(graph[sw.Dpid], sw.Dpid+"/"+port.PortNo)
 			parts := strings.Split(port.Name, "-")
-			graph[sw.Dpid+"/"+port.Port_no] = append(graph[sw.Dpid+"/"+port.Port_no], sw.Dpid)
+			graph[sw.Dpid+"/"+port.PortNo] = append(graph[sw.Dpid+"/"+port.PortNo], sw.Dpid)
 			sort.Strings(parts)
-			connections[parts[0]+"-"+parts[1]] = append(connections[parts[0]+"-"+parts[1]], sw.Dpid+"/"+port.Port_no)
+			connections[parts[0]+"-"+parts[1]] = append(connections[parts[0]+"-"+parts[1]], sw.Dpid+"/"+port.PortNo)
 		}
 	}
 
@@ -175,12 +174,22 @@ func (ryuClient *RyuClient) FindShortestPath(src string, dst string) []string {
 	return bestPath
 }
 
-func (ryuClient *RyuClient) InstallFlow(rule Rule, dpid string) error {
+func (ryuClient *RyuClient) InstallFlow(rule Rule) ([]byte, error) {
 	bytes, err := json.Marshal(rule)
 	if err != nil {
-		return errors.Wrap(err, "JSON parsing failed")
+		return nil, errors.Wrap(err, "JSON parsing failed")
 	}
 
 	resp := request("POST", ryuClient.URL+"/stats/flowentry/add", string(bytes))
-	return resp
+	return resp, nil
+}
+
+func (ryuClient *RyuClient) DeleteFlow(rule Rule) ([]byte, error) {
+	bytes, err := json.Marshal(rule)
+	if err != nil {
+		return nil, errors.Wrap(err, "JSON parsing failed")
+	}
+
+	resp := request("POST", ryuClient.URL+"/stats/flowentry/delete_strict", string(bytes))
+	return resp, nil
 }
