@@ -2,7 +2,7 @@
 * File              : overlay.go
 * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
 * Date              : 10.04.2019
-* Last Modified Date: 25.04.2019
+* Last Modified Date: 26.04.2019
 * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -319,4 +319,17 @@ func (overlayObj *Overlay) DeployOverlay(osClient utils.OpenStackClient, overlay
 		}
 	}
 
+	for _, sw := range switches {
+		cmd := "sudo ovs-ofctl show br1 | awk '/[0-9]\\(.*\\):/{print $1}' | awk -F\"[()-]\"  'BEGIN{OFS=\"-\"} {print $2,$3}'"
+		portString, _ := utils.RunCommand(sw, cmd)
+		portsTrimmed := strings.Trim(string(portString), "\n")
+
+		ports := strings.Split(portsTrimmed, "\n")
+
+		for _, port := range ports {
+			utils.RunCommand(sw, "sudo ovs-ofctl mod-port br1 "+port+" receive")
+			utils.RunCommand(sw, "sudo ovs-ofctl mod-port br1 "+port+" forward")
+			utils.RunCommand(sw, "sudo ovs-ofctl mod-port br1 "+port+" flood")
+		}
+	}
 }
