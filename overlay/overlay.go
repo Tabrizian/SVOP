@@ -14,10 +14,12 @@ import (
 
 	"math/rand"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Tabrizian/SVOP/models"
 	"github.com/Tabrizian/SVOP/utils"
+	"github.com/pkg/errors"
 )
 
 var vnis []int
@@ -35,8 +37,9 @@ type Switch struct {
 type Overlay struct {
 	overlayObject map[string]interface{}
 	ryuClient     *utils.RyuClient
-	hosts         []Hosts
-	switches      []Switches
+	hosts         map[string]Host
+	switches      map[string]Switch
+	osClient      *utils.OpenStackClient
 }
 
 func NewOverlay(overlayObject map[string]interface{}, ryuClient *utils.RyuClient, osClient *utils.OpenStackClient) *Overlay {
@@ -46,8 +49,8 @@ func NewOverlay(overlayObject map[string]interface{}, ryuClient *utils.RyuClient
 		osClient:      osClient,
 	}
 
-	overlay.hosts = ExtractHosts(overlay.overlayObj)
-	overlay.switches = ExtractSWs(overlay.overlayObj)
+	overlay.hosts = ExtractHosts(overlay.overlayObject)
+	overlay.switches = ExtractSWs(overlay.overlayObject)
 
 	return overlay
 }
@@ -98,7 +101,7 @@ func FixConnectionFormat(connection interface{}) map[string]string {
 	return connectionString
 }
 
-func (overlay *Overlay) SetupOpenFlowRules(rule Rule, src string, dst string) {
+func (overlay *Overlay) SetupOpenFlowRules(rule utils.Rule, src string, dst string) error {
 	shortestPath := overlay.ryuClient.FindShortestPath(src, dst)
 
 	var dpid string
@@ -106,27 +109,44 @@ func (overlay *Overlay) SetupOpenFlowRules(rule Rule, src string, dst string) {
 	var dstPort int
 	for index, path := range shortestPath {
 		if index%3 == 0 {
-			srcPort = strconv.Atoi(strings.Split(path, "/")[1])
+			srcPortInt, err := strconv.Atoi(strings.Split(path, "/")[1])
+			srcPort = srcPortInt
+			if err != nil {
+				return errors.Wrap(err, "Failed to convert port name")
+			}
 		} else if index%3 == 1 {
 			dpid = path
 		} else if index%3 == 2 {
-			dstPort = strconv.Atoi(strings.Split(path, "/")[1])
-			rule.Dpid = dpid
+			dstPortInt, err := strconv.Atoi(strings.Split(path, "/")[1])
+			if err != nil {
+				return errors.Wrap(err, "Failed to convert port name")
+			}
+			dpidDecimal, err := strconv.ParseInt(dpid, 16, 64)
+			rule.Dpid = int(dpidDecimal)
+			if err != nil {
+				return errors.Wrap(err, "Failed to convert dpid to int")
+			}
 			rule.Matching.InPort = srcPort
 			rule.Action[0].Port = dstPort
-			overlay.ryuClient.InstallRule(rule)
+			overlay.ryuClient.InstallFlow(rule)
+			dstPort = dstPortInt
 		}
 	}
+	_ = srcPort
+	_ = dstPort
+	return nil
 }
 
-func ExtractSWs(overlay map[string]interface{}) map[string]struct{} {
-	var switches map[string]struct{}
+func ExtractSWs(overlay map[string]interface{}) map[string]Switch {
+	var switches map[string]Switch
 
-	switches = make(map[string]struct{})
+	switches = make(map[string]Switch)
 
 	for sw, connections := range overlay {
 		if _, ok := switches[sw]; !ok {
-			switches[sw] = struct{}{}
+			switches[sw] = Switch{
+				Name: sw,
+			}
 		}
 
 		connectionsAsserted := connections.([]interface{})
@@ -136,7 +156,9 @@ func ExtractSWs(overlay map[string]interface{}) map[string]struct{} {
 			// Is it a host
 			if _, ok := connectionString["ip"]; !ok {
 				if _, ok := switches[endpoint]; !ok {
-					switches[endpoint] = struct{}{}
+					switches[endpoint] = Switch{
+						Name: endpoint,
+					}
 				}
 			}
 		}
@@ -226,8 +248,9 @@ func (overlayObj *Overlay) DeployOverlay(osClient utils.OpenStackClient, overlay
 	hostChannel := make(chan *models.VM)
 	hostNames := ExtractHosts(overlay)
 
-	for sw, _ := range switchNames {
-		go func(sw string) {
+	for _, sw := range switchNames {
+		log.Println(sw)
+		go func(sw Switch) {
 			log.Printf("Creating VM %s\n", sw)
 			switchChannel <- ConfigureSwitch(osClient, sw, vmConfiguration)
 		}(sw)
