@@ -2,7 +2,7 @@
 * File              : overlay.go
 * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
 * Date              : 10.04.2019
-* Last Modified Date: 26.04.2019
+* Last Modified Date: 28.04.2019
 * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -103,6 +103,7 @@ func FixConnectionFormat(connection interface{}) map[string]string {
 
 func (overlay *Overlay) SetupOpenFlowRules(rule utils.Rule, src string, dst string) error {
 	shortestPath := overlay.ryuClient.FindShortestPath(src, dst)
+	log.Printf("Calculated shortest path is %s\n", shortestPath)
 
 	var dpid string
 	var srcPort int
@@ -117,19 +118,54 @@ func (overlay *Overlay) SetupOpenFlowRules(rule utils.Rule, src string, dst stri
 		} else if index%3 == 1 {
 			dpid = path
 		} else if index%3 == 2 {
-			dstPortInt, err := strconv.Atoi(strings.Split(path, "/")[1])
+			dstPort, err := strconv.Atoi(strings.Split(path, "/")[1])
 			if err != nil {
 				return errors.Wrap(err, "Failed to convert port name")
 			}
-			dpidDecimal, err := strconv.ParseInt(dpid, 16, 64)
-			rule.Dpid = int(dpidDecimal)
+			dpidInt, err := strconv.ParseUint(dpid, 16, 64)
+			if err != nil {
+				return errors.Wrap(err, "Failed to convert dpid to int")
+			}
+			rule.Dpid = int(dpidInt)
+			rule.Matching.InPort = srcPort
+			rule.Action[0].Port = dstPort
+			overlay.ryuClient.InstallFlow(rule)
+		}
+	}
+	_ = srcPort
+	_ = dstPort
+	return nil
+}
+
+func (overlay *Overlay) UninstallOpenFlowRules(rule utils.Rule, src string, dst string) error {
+	shortestPath := overlay.ryuClient.FindShortestPath(src, dst)
+	log.Printf("Calculated shortest path is %s\n", shortestPath)
+
+	var dpid string
+	var srcPort int
+	var dstPort int
+	for index, path := range shortestPath {
+		if index%3 == 0 {
+			srcPortInt, err := strconv.Atoi(strings.Split(path, "/")[1])
+			srcPort = srcPortInt
+			if err != nil {
+				return errors.Wrap(err, "Failed to convert port name")
+			}
+		} else if index%3 == 1 {
+			dpid = path
+		} else if index%3 == 2 {
+			dstPort, err := strconv.Atoi(strings.Split(path, "/")[1])
+			if err != nil {
+				return errors.Wrap(err, "Failed to convert port name")
+			}
+			dpidInt, err := strconv.ParseUint(dpid, 16, 64)
+			rule.Dpid = int(dpidInt)
 			if err != nil {
 				return errors.Wrap(err, "Failed to convert dpid to int")
 			}
 			rule.Matching.InPort = srcPort
 			rule.Action[0].Port = dstPort
-			overlay.ryuClient.InstallFlow(rule)
-			dstPort = dstPortInt
+			overlay.ryuClient.DeleteFlow(rule)
 		}
 	}
 	_ = srcPort
@@ -249,7 +285,6 @@ func (overlayObj *Overlay) DeployOverlay(osClient utils.OpenStackClient, overlay
 	hostNames := ExtractHosts(overlay)
 
 	for _, sw := range switchNames {
-		log.Println(sw)
 		go func(sw Switch) {
 			log.Printf("Creating VM %s\n", sw)
 			switchChannel <- ConfigureSwitch(osClient, sw, vmConfiguration)
@@ -267,8 +302,10 @@ func (overlayObj *Overlay) DeployOverlay(osClient utils.OpenStackClient, overlay
 		host := <-hostChannel
 		host.OverlayIp = hostNames[host.Name].OverlayIP
 		hosts[host.Name] = *host
-		defaultOverlayAddress = hostNames[host.Name].OverlayIP
-		gatewayIp = host.IP[0]
+		if hostNames[host.Name].Gateway {
+			defaultOverlayAddress = hostNames[host.Name].OverlayIP
+			gatewayIp = host.IP[0]
+		}
 	}
 
 	for range switchNames {
@@ -319,17 +356,17 @@ func (overlayObj *Overlay) DeployOverlay(osClient utils.OpenStackClient, overlay
 		}
 	}
 
-	for _, sw := range switches {
-		cmd := "sudo ovs-ofctl show br1 | awk '/[0-9]\\(.*\\):/{print $1}' | awk -F\"[()-]\"  'BEGIN{OFS=\"-\"} {print $2,$3}'"
-		portString, _ := utils.RunCommand(sw, cmd)
-		portsTrimmed := strings.Trim(string(portString), "\n")
+	// for _, sw := range switches {
+	// 	cmd := "sudo ovs-ofctl show br1 | awk '/[0-9]\\(.*\\):/{print $1}' | awk -F\"[()-]\"  'BEGIN{OFS=\"-\"} {print $2,$3}'"
+	// 	portString, _ := utils.RunCommand(sw, cmd)
+	// 	portsTrimmed := strings.Trim(string(portString), "\n")
 
-		ports := strings.Split(portsTrimmed, "\n")
+	// 	ports := strings.Split(portsTrimmed, "\n")
 
-		for _, port := range ports {
-			utils.RunCommand(sw, "sudo ovs-ofctl mod-port br1 "+port+" receive")
-			utils.RunCommand(sw, "sudo ovs-ofctl mod-port br1 "+port+" forward")
-			utils.RunCommand(sw, "sudo ovs-ofctl mod-port br1 "+port+" flood")
-		}
-	}
+	// 	for _, port := range ports {
+	// 		utils.RunCommand(sw, "sudo ovs-ofctl mod-port br1 "+port+" receive")
+	// 		utils.RunCommand(sw, "sudo ovs-ofctl mod-port br1 "+port+" forward")
+	// 		utils.RunCommand(sw, "sudo ovs-ofctl mod-port br1 "+port+" flood")
+	// 	}
+	// }
 }
