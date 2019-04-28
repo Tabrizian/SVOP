@@ -2,7 +2,7 @@
  * File              : ryu.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 14.04.2019
- * Last Modified Date: 25.04.2019
+ * Last Modified Date: 28.04.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 package utils
@@ -180,6 +180,7 @@ func (ryuClient *RyuClient) InstallFlow(rule Rule) ([]byte, error) {
 		return nil, errors.Wrap(err, "JSON parsing failed")
 	}
 
+	log.Printf("Setting up rule %+v\n", rule)
 	resp := request("POST", ryuClient.URL+"/stats/flowentry/add", string(bytes))
 	return resp, nil
 }
@@ -189,6 +190,7 @@ func (ryuClient *RyuClient) DeleteFlow(rule Rule) ([]byte, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "JSON parsing failed")
 	}
+	log.Printf("Deleting rule %+v\n", rule)
 
 	resp := request("POST", ryuClient.URL+"/stats/flowentry/delete_strict", string(bytes))
 	return resp, nil
