@@ -2,7 +2,7 @@
  * File              : ryu.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 14.04.2019
- * Last Modified Date: 28.04.2019
+ * Last Modified Date: 29.04.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 package utils
@@ -68,7 +68,7 @@ func NewRyuClient(URL string) (*RyuClient, error) {
 
 func request(verb string, url string, body string) []byte {
 	req, err := http.NewRequest(verb, url, bytes.NewReader([]byte(body)))
-	if verb == "POST" {
+	if verb == "POST" || verb == "PUT" {
 		req, err = http.NewRequest(verb, url, bytes.NewReader([]byte(body)))
 		req.Header.Add("Content-Type", "application/json")
 	} else {
