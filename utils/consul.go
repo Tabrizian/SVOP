@@ -2,7 +2,7 @@
  * File              : consul.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 29.04.2019
- * Last Modified Date: 29.04.2019
+ * Last Modified Date: 21.05.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -38,5 +38,10 @@ func (consulClient *ConsulClient) RegisterService(service *Service) ([]byte, err
 		return nil, errors.Wrap(err, "Failed to convert json to error")
 	}
 	resp := request("PUT", consulClient.URL+"/v1/agent/service/register", string(requestString))
+	return resp, nil
+}
+
+func (consulClient *ConsulClient) DeleteService(service *Service) ([]byte, error) {
+	resp := request("PUT", consulClient.URL+"/v1/agent/service/deregister/"+service.Name, "")
 	return resp, nil
 }

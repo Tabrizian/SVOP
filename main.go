@@ -2,7 +2,7 @@
  * File              : main.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 29.04.2019
- * Last Modified Date: 29.04.2019
+ * Last Modified Date: 21.05.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -16,6 +16,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/Tabrizian/SVOP/apps"
 	"github.com/Tabrizian/SVOP/models"
 	"github.com/Tabrizian/SVOP/overlay"
 	"github.com/Tabrizian/SVOP/utils"
@@ -38,10 +39,26 @@ func main() {
 	}
 	osClient, _ := utils.NewOpenStackClient(configuration.Auth)
 	osClientD := *osClient
-	ryuClient, err := utils.NewRyuClient("10.12.13.44:8080")
+	ryuClient, err := utils.NewRyuClient(viper.Get("controller.address").(string) + ":8080")
 	if err != nil {
 		log.Fatalf("An error occurred while creating RyuClient: %s", err)
 	}
+
+	consulClient, err := utils.NewConsulClient(viper.Get("consul.address").(string))
+	if err != nil {
+		log.Fatalf("An error occurred while creating RyuClient: %s", err)
+	}
+
+	var result map[string]interface{}
+	buffer, err := ioutil.ReadFile("./configs/topology.yaml")
+	if err != nil {
+		log.Fatalf("An error occured while reading from file: %s", err)
+	}
+	err = yaml.Unmarshal(buffer, &result)
+	if err != nil {
+		log.Fatalf("An error occured while parsing YAML: %s", err)
+	}
+	overlayObj := overlay.NewOverlay(result, ryuClient, osClient, consulClient)
 
 	app := cli.NewApp()
 	app.Name = "svop"
@@ -81,7 +98,18 @@ func main() {
 					Name:  "app",
 					Usage: "Deploys an Application",
 					Action: func(c *cli.Context) error {
-						fmt.Println("Deploy and application", c.Args().First())
+						fmt.Println("Deploy and application")
+						var result []interface{}
+						buffer, err := ioutil.ReadFile("./configs/apps.yaml")
+						if err != nil {
+							return errors.Wrap(err, "An error occured while reading from file")
+						}
+						err = yaml.Unmarshal(buffer, &result)
+						apps.DeployServices(result, overlayObj)
+						if err != nil {
+							return errors.Wrap(err, "An error occured while parsing YAML")
+						}
+
 						return nil
 					},
 				},
@@ -99,16 +127,12 @@ func main() {
 							return errors.Wrap(err, "An error occured while parsing YAML")
 						}
 
-						ryuClient, err := utils.NewRyuClient("10.12.13.44:8080")
-						if err != nil {
-							return errors.Wrap(err, "An error occurred while creating RyuClient")
-						}
-						overlayObj := overlay.NewOverlay(result, ryuClient, osClient)
+						overlayObj := overlay.NewOverlay(result, ryuClient, osClient, consulClient)
 
 						match := utils.Match{
-							InPort:  1,
-							DLType:  0x800,
-							NWSrc:   "192.168.200.101",
+							InPort: 1,
+							DLType: 0x800,
+							// 		NWSrc:   "192.168.200.101",
 							NWDst:   "192.168.200.102",
 							NWProto: 6,
 							TPDst:   80,
@@ -145,6 +169,53 @@ func main() {
 					Name:  "topology",
 					Usage: "Deploys an Overlay topology",
 					Action: func(c *cli.Context) error {
+						overlayObj.DeployOverlay(osClientD, result, configuration.VM, viper.Get("controller.address").(string))
+						return nil
+					},
+				},
+				{
+					Name:  "deregister",
+					Usage: "Deregister All Services in Consul",
+					Action: func(c *cli.Context) error {
+						for _, host := range overlayObj.Hosts {
+							serviceCadvisor := &utils.Service{
+								Name: host.Name + "-cadvisor",
+							}
+							serviceExporter := &utils.Service{
+								Name: host.Name + "-prometheus",
+							}
+							_, err := consulClient.DeleteService(serviceCadvisor)
+							if err != nil {
+								return errors.Wrap(err, "An error occured while deregistering service")
+							}
+							_, err = consulClient.DeleteService(serviceExporter)
+							if err != nil {
+								return errors.Wrap(err, "An error occured while deregistering service")
+							}
+						}
+						for _, sw := range overlayObj.Switches {
+							serviceCadvisor := &utils.Service{
+								Name: sw.Name + "-cadvisor",
+							}
+							serviceExporter := &utils.Service{
+								Name: sw.Name + "-prometheus",
+							}
+							_, err := consulClient.DeleteService(serviceCadvisor)
+							if err != nil {
+								return errors.Wrap(err, "An error occured while deregistering service")
+							}
+							_, err = consulClient.DeleteService(serviceExporter)
+							if err != nil {
+								return errors.Wrap(err, "An error occured while deregistering service")
+							}
+						}
+						return nil
+					},
+				},
+				{
+					Name:  "test",
+					Usage: "Test",
+					Action: func(c *cli.Context) error {
 						var result map[string]interface{}
 						buffer, err := ioutil.ReadFile("./configs/topology.yaml")
 						if err != nil {
@@ -154,9 +225,15 @@ func main() {
 						if err != nil {
 							return errors.Wrap(err, "An error occured while parsing YAML")
 						}
-						overlayObj := overlay.NewOverlay(result, ryuClient, osClient)
-						overlayObj.DeployOverlay(osClientD, result, configuration.VM, viper.Get("controller.address").(string))
-						return nil
+						serviceCadvisor := &utils.Service{
+							Name:    "fake" + "-cadvisor",
+							Tags:    []string{"overlay", "cadvisor"},
+							Port:    8080,
+							Address: "1.2.3.4",
+						}
+						result2, err := consulClient.RegisterService(serviceCadvisor)
+						log.Println(string(result2))
+						return err
 					},
 				},
 			},
