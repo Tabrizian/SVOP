@@ -2,7 +2,7 @@
 * File              : overlay.go
 * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
 * Date              : 10.04.2019
-* Last Modified Date: 29.04.2019
+* Last Modified Date: 21.05.2019
 * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -37,9 +37,9 @@ type Switch struct {
 type Overlay struct {
 	overlayObject map[string]interface{}
 	ryuClient     *utils.RyuClient
-	hosts         map[string]Host
-	switches      map[string]Switch
-	osClient      *utils.OpenStackClient
+	Hosts         map[string]Host
+	Switches      map[string]Switch
+	OsClient      *utils.OpenStackClient
 	consulClient  *utils.ConsulClient
 }
 
@@ -47,12 +47,12 @@ func NewOverlay(overlayObject map[string]interface{}, ryuClient *utils.RyuClient
 	overlay := &Overlay{
 		overlayObject: overlayObject,
 		ryuClient:     ryuClient,
-		osClient:      osClient,
+		OsClient:      osClient,
 		consulClient:  consulClient,
 	}
 
-	overlay.hosts = ExtractHosts(overlay.overlayObject)
-	overlay.switches = ExtractSWs(overlay.overlayObject)
+	overlay.Hosts = ExtractHosts(overlay.overlayObject)
+	overlay.Switches = ExtractSWs(overlay.overlayObject)
 
 	return overlay
 }
