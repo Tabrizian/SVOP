@@ -1,0 +1,13 @@
+# File              : apps.example.yaml
+# Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
+# Date              : 18.05.2019
+# Last Modified Date: 21.05.2019
+# Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
+
+
+- image: nginx # Docker image name
+  portInLB: "7000" # Port to be exposed on LB
+  inPort: "80" # In Port Docker
+  outPort: "80" # Out Port Docker
+  location: h2 # Location to Deploy Container
+  name: nginx # Docker Container name
