@@ -2,7 +2,7 @@
  * File              : ryu.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 14.04.2019
- * Last Modified Date: 29.04.2019
+ * Last Modified Date: 22.05.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 package utils
@@ -16,6 +16,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -172,6 +173,22 @@ func (ryuClient *RyuClient) FindShortestPath(src string, dst string) []string {
 	}
 
 	return bestPath
+}
+
+func (ryuClient *RyuClient) DeleteAll() error {
+	switches, err := ryuClient.GetSwitches()
+	if err != nil {
+		return errors.Wrap(err, "Failed to find all of the switches")
+	}
+	for _, sw := range switches {
+		dpid, err := strconv.ParseUint(sw.Dpid, 16, 64)
+		str := strconv.FormatUint(uint64(dpid), 10)
+		if err != nil {
+			return errors.Wrap(err, "Failed to convert hex to int")
+		}
+		request("DELETE", ryuClient.URL+"/stats/flowentry/clear/"+str, "")
+	}
+	return nil
 }
 
 func (ryuClient *RyuClient) InstallFlow(rule Rule) ([]byte, error) {
