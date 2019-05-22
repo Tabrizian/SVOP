@@ -2,7 +2,7 @@
  * File              : main.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 29.04.2019
- * Last Modified Date: 21.05.2019
+ * Last Modified Date: 22.05.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -174,7 +174,49 @@ func main() {
 					},
 				},
 				{
-					Name:  "deregister",
+					Name:  "test",
+					Usage: "Test",
+					Action: func(c *cli.Context) error {
+						var result map[string]interface{}
+						buffer, err := ioutil.ReadFile("./configs/topology.yaml")
+						if err != nil {
+							return errors.Wrap(err, "An error occured while reading from file")
+						}
+						err = yaml.Unmarshal(buffer, &result)
+						if err != nil {
+							return errors.Wrap(err, "An error occured while parsing YAML")
+						}
+						serviceCadvisor := &utils.Service{
+							Name:    "fake" + "-cadvisor",
+							Tags:    []string{"overlay", "cadvisor"},
+							Port:    8080,
+							Address: "1.2.3.4",
+						}
+						result2, err := consulClient.RegisterService(serviceCadvisor)
+						log.Println(string(result2))
+						return err
+					},
+				},
+			},
+		},
+		{
+			Name:    "remove",
+			Aliases: []string{"r"},
+			Usage:   "Remove A SVOP Object",
+			Action: func(c *cli.Context) error {
+				return nil
+			},
+			Subcommands: []cli.Command{
+				{
+					Name:  "flows",
+					Usage: "Delete all of the flows",
+					Action: func(c *cli.Context) error {
+						ryuClient.DeleteAll()
+						return nil
+					},
+				},
+				{
+					Name:  "services",
 					Usage: "Deregister All Services in Consul",
 					Action: func(c *cli.Context) error {
 						for _, host := range overlayObj.Hosts {
@@ -210,30 +252,6 @@ func main() {
 							}
 						}
 						return nil
-					},
-				},
-				{
-					Name:  "test",
-					Usage: "Test",
-					Action: func(c *cli.Context) error {
-						var result map[string]interface{}
-						buffer, err := ioutil.ReadFile("./configs/topology.yaml")
-						if err != nil {
-							return errors.Wrap(err, "An error occured while reading from file")
-						}
-						err = yaml.Unmarshal(buffer, &result)
-						if err != nil {
-							return errors.Wrap(err, "An error occured while parsing YAML")
-						}
-						serviceCadvisor := &utils.Service{
-							Name:    "fake" + "-cadvisor",
-							Tags:    []string{"overlay", "cadvisor"},
-							Port:    8080,
-							Address: "1.2.3.4",
-						}
-						result2, err := consulClient.RegisterService(serviceCadvisor)
-						log.Println(string(result2))
-						return err
 					},
 				},
 			},
