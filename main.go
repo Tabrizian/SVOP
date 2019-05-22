@@ -216,6 +216,25 @@ func main() {
 					},
 				},
 				{
+					Name:  "app",
+					Usage: "Delete Currently Deployed Apps",
+					Action: func(c *cli.Context) error {
+						fmt.Println("Deploy an application")
+						var result []interface{}
+						buffer, err := ioutil.ReadFile("./configs/apps.yaml")
+						if err != nil {
+							return errors.Wrap(err, "An error occured while reading from file")
+						}
+						err = yaml.Unmarshal(buffer, &result)
+						apps.DeleteServices(result, overlayObj)
+						if err != nil {
+							return errors.Wrap(err, "An error occured while parsing YAML")
+						}
+
+						return nil
+					},
+				},
+				{
 					Name:  "services",
 					Usage: "Deregister All Services in Consul",
 					Action: func(c *cli.Context) error {

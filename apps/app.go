@@ -47,3 +47,35 @@ func DeployServices(services []interface{}, overlayT *overlay.Overlay) error {
 	}
 	return nil
 }
+
+func DeleteServices(services []interface{}, overlayT *overlay.Overlay) error {
+	var gateway overlay.Host
+	for _, host := range overlayT.Hosts {
+		if host.Gateway == true {
+			gateway = host
+			break
+		}
+	}
+
+	for _, service := range services {
+		serviceAsserted := overlay.FixConnectionFormat(service)
+		dst := overlayT.Hosts[serviceAsserted["location"]]
+		cmd := fmt.Sprintf("docker rm -f %s", serviceAsserted["name"])
+		dstVMObj, err := models.GetVMByName(overlayT.OsClient, dst.Name)
+		dstVMObj.OverlayIp = dst.OverlayIP
+		if err != nil {
+			return errors.Wrap(err, "Couldn't find VM "+dst.Name)
+		}
+
+		gatewayVMObj, err := models.GetVMByName(overlayT.OsClient, gateway.Name)
+		if err != nil {
+			return errors.Wrap(err, "Couldn't find VM "+gatewayVMObj.Name)
+		}
+
+		utils.RunCommandFromOverlay(*dstVMObj, cmd, gatewayVMObj.IP[0])
+		loadBalance := fmt.Sprintf("sudo iptables -t nat -D PREROUTING -d %s/32 -p tcp -m tcp --dport %s -j DNAT --to-destination %s:%s", gatewayVMObj.IP[0], serviceAsserted["portInLB"], dst.OverlayIP, serviceAsserted["outPort"])
+
+		utils.RunCommand(*gatewayVMObj, loadBalance)
+	}
+	return nil
+}
