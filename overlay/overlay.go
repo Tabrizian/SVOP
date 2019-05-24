@@ -2,7 +2,7 @@
 * File              : overlay.go
 * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
 * Date              : 10.04.2019
-* Last Modified Date: 21.05.2019
+* Last Modified Date: 23.05.2019
 * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -386,8 +386,8 @@ func (overlayObj *Overlay) DeployOverlay(osClient utils.OpenStackClient, overlay
 		if vm.OverlayIp != defaultOverlayAddress {
 			utils.RunCommand(vm, "sshpass -p savi ssh -o StrictHostKeyChecking=no ubuntu@"+gatewayIp+" ping -c10 "+vm.OverlayIp)
 			out, _ := utils.RunCommandFromOverlay(vm, "route | awk 'NR==3{print $2}'", gatewayIp)
-			utils.RunCommandFromOverlay(vm, "sudo route add default gw "+defaultOverlayAddress, gatewayIp)
 			utils.RunCommandFromOverlay(vm, "sudo route del default gw "+string(out), gatewayIp)
+			utils.RunCommandFromOverlay(vm, "sudo route add default gw "+defaultOverlayAddress, gatewayIp)
 		}
 	}
 
