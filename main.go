@@ -2,7 +2,7 @@
  * File              : main.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 29.04.2019
- * Last Modified Date: 22.05.2019
+ * Last Modified Date: 24.05.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -25,9 +25,18 @@ import (
 	"github.com/urfave/cli"
 )
 
-func main() {
-	var configuration models.Configuration
-	viper.SetConfigName("config")
+var (
+	configuration models.Configuration
+	osClient      *utils.OpenStackClient
+	osClientD     utils.OpenStackClient
+	ryuClient     *utils.RyuClient
+	consulClient  *utils.ConsulClient
+	overlayObj    *overlay.Overlay
+	result        map[string]interface{}
+)
+
+func ReadInitialConfiguration(topology string, config string) {
+	viper.SetConfigName(config)
 	viper.AddConfigPath("./configs/")
 	viper.AddConfigPath("/etc/SVOP/")
 	if err := viper.ReadInConfig(); err != nil {
@@ -38,19 +47,18 @@ func main() {
 		log.Fatalf("Error while unmarshaling the configuration file %s", err)
 	}
 	osClient, _ := utils.NewOpenStackClient(configuration.Auth)
-	osClientD := *osClient
-	ryuClient, err := utils.NewRyuClient(viper.Get("controller.address").(string) + ":8080")
+	osClientD = *osClient
+	ryuClient, err = utils.NewRyuClient(viper.Get("controller.address").(string) + ":8080")
 	if err != nil {
 		log.Fatalf("An error occurred while creating RyuClient: %s", err)
 	}
 
-	consulClient, err := utils.NewConsulClient(viper.Get("consul.address").(string))
+	consulClient, err = utils.NewConsulClient(viper.Get("consul.address").(string))
 	if err != nil {
-		log.Fatalf("An error occurred while creating RyuClient: %s", err)
+		log.Fatalf("An error occurred while creating Consul Client: %s", err)
 	}
 
-	var result map[string]interface{}
-	buffer, err := ioutil.ReadFile("./configs/topology.yaml")
+	buffer, err := ioutil.ReadFile(topology)
 	if err != nil {
 		log.Fatalf("An error occured while reading from file: %s", err)
 	}
@@ -58,14 +66,35 @@ func main() {
 	if err != nil {
 		log.Fatalf("An error occured while parsing YAML: %s", err)
 	}
-	overlayObj := overlay.NewOverlay(result, ryuClient, osClient, consulClient)
+	overlayObj = overlay.NewOverlay(result, ryuClient, osClient, consulClient)
+}
 
+func main() {
 	app := cli.NewApp()
 	app.Name = "svop"
 	app.Usage = "Simple VNF Orchestration Platform"
 	app.Action = func(c *cli.Context) error {
-		fmt.Println("boom! I say!")
+		fmt.Println("SVOP: Simple VNF Orchestration Platform")
 		return nil
+	}
+
+	var topology string
+	var config string
+	var appsConfig string
+	var vnf string
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:        "topology",
+			Value:       "./configs/topology.yaml",
+			Usage:       "Topology File Location",
+			Destination: &topology,
+		},
+		cli.StringFlag{
+			Name:        "config",
+			Value:       "config",
+			Usage:       "Configuration File Name",
+			Destination: &config,
+		},
 	}
 
 	app.Commands = []cli.Command{
@@ -78,11 +107,20 @@ func main() {
 			},
 			Subcommands: []cli.Command{
 				{
-					Name:  "vnf",
+					Name: "vnf",
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:        "file",
+							Value:       "./configs/vnfs.yaml",
+							Usage:       "VNF Configuration place",
+							Destination: &vnf,
+						},
+					},
 					Usage: "Deploys a VNF application",
 					Action: func(c *cli.Context) error {
+						ReadInitialConfiguration(topology, config)
 						var result map[string]interface{}
-						buffer, err := ioutil.ReadFile("./configs/vnfs.yaml")
+						buffer, err := ioutil.ReadFile(vnf)
 						if err != nil {
 							return errors.Wrap(err, "An error occured while reading from file")
 						}
@@ -97,10 +135,19 @@ func main() {
 				{
 					Name:  "app",
 					Usage: "Deploys an Application",
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:        "file",
+							Value:       "./configs/apps.yaml",
+							Usage:       "Apps File Location",
+							Destination: &appsConfig,
+						},
+					},
 					Action: func(c *cli.Context) error {
-						fmt.Println("Deploy and application")
+						ReadInitialConfiguration(topology, config)
+						fmt.Println("Deploy an application")
 						var result []interface{}
-						buffer, err := ioutil.ReadFile("./configs/apps.yaml")
+						buffer, err := ioutil.ReadFile(appsConfig)
 						if err != nil {
 							return errors.Wrap(err, "An error occured while reading from file")
 						}
@@ -118,7 +165,8 @@ func main() {
 					Usage: "Setups Required OpenFlow Rules",
 					Action: func(c *cli.Context) error {
 						var result map[string]interface{}
-						buffer, err := ioutil.ReadFile("./configs/topology.yaml")
+						ReadInitialConfiguration(topology, config)
+						buffer, err := ioutil.ReadFile(topology)
 						if err != nil {
 							return errors.Wrap(err, "An error occured while reading from file")
 						}
@@ -169,6 +217,7 @@ func main() {
 					Name:  "topology",
 					Usage: "Deploys an Overlay topology",
 					Action: func(c *cli.Context) error {
+						ReadInitialConfiguration(topology, config)
 						overlayObj.DeployOverlay(osClientD, result, configuration.VM, viper.Get("controller.address").(string))
 						return nil
 					},
@@ -177,8 +226,9 @@ func main() {
 					Name:  "test",
 					Usage: "Test",
 					Action: func(c *cli.Context) error {
+						ReadInitialConfiguration(topology, config)
 						var result map[string]interface{}
-						buffer, err := ioutil.ReadFile("./configs/topology.yaml")
+						buffer, err := ioutil.ReadFile(topology)
 						if err != nil {
 							return errors.Wrap(err, "An error occured while reading from file")
 						}
@@ -221,7 +271,7 @@ func main() {
 					Action: func(c *cli.Context) error {
 						fmt.Println("Deploy an application")
 						var result []interface{}
-						buffer, err := ioutil.ReadFile("./configs/apps.yaml")
+						buffer, err := ioutil.ReadFile(appsConfig)
 						if err != nil {
 							return errors.Wrap(err, "An error occured while reading from file")
 						}
@@ -279,7 +329,7 @@ func main() {
 
 	sort.Sort(cli.CommandsByName(app.Commands))
 
-	err = app.Run(os.Args)
+	err := app.Run(os.Args)
 	if err != nil {
 		log.Fatal(err)
 	}
