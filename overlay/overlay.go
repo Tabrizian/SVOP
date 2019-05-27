@@ -2,7 +2,7 @@
 * File              : overlay.go
 * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
 * Date              : 10.04.2019
-* Last Modified Date: 23.05.2019
+* Last Modified Date: 26.05.2019
 * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -40,7 +40,7 @@ type Overlay struct {
 	Hosts         map[string]Host
 	Switches      map[string]Switch
 	OsClient      *utils.OpenStackClient
-	consulClient  *utils.ConsulClient
+	ConsulClient  *utils.ConsulClient
 }
 
 func NewOverlay(overlayObject map[string]interface{}, ryuClient *utils.RyuClient, osClient *utils.OpenStackClient, consulClient *utils.ConsulClient) *Overlay {
@@ -48,7 +48,7 @@ func NewOverlay(overlayObject map[string]interface{}, ryuClient *utils.RyuClient
 		overlayObject: overlayObject,
 		ryuClient:     ryuClient,
 		OsClient:      osClient,
-		consulClient:  consulClient,
+		ConsulClient:  consulClient,
 	}
 
 	overlay.Hosts = ExtractHosts(overlay.overlayObject)
@@ -304,19 +304,19 @@ func (overlayObj *Overlay) DeployOverlay(osClient utils.OpenStackClient, overlay
 		host := <-hostChannel
 		serviceProm := &utils.Service{
 			Name:    host.Name + "-prometheus",
-			Tags:    []string{"overlay", "prometheus"},
+			Tags:    []string{"overlay", "prometheus", osClient.Auth.Region},
 			Port:    9100,
 			Address: host.IP[0],
 		}
 
 		serviceCadvisor := &utils.Service{
 			Name:    host.Name + "-cadvisor",
-			Tags:    []string{"overlay", "cadvisor"},
+			Tags:    []string{"overlay", "cadvisor", osClient.Auth.Region},
 			Port:    8080,
 			Address: host.IP[0],
 		}
-		overlayObj.consulClient.RegisterService(serviceProm)
-		overlayObj.consulClient.RegisterService(serviceCadvisor)
+		overlayObj.ConsulClient.RegisterService(serviceProm)
+		overlayObj.ConsulClient.RegisterService(serviceCadvisor)
 
 		host.OverlayIp = hostNames[host.Name].OverlayIP
 		hosts[host.Name] = *host
@@ -332,20 +332,20 @@ func (overlayObj *Overlay) DeployOverlay(osClient utils.OpenStackClient, overlay
 
 		serviceProm := &utils.Service{
 			Name:    sw.Name + "-prometheus",
-			Tags:    []string{"overlay", "prometheus"},
+			Tags:    []string{"overlay", "prometheus", osClient.Auth.Region},
 			Port:    9100,
 			Address: sw.IP[0],
 		}
 
 		serviceCadvisor := &utils.Service{
 			Name:    sw.Name + "-cadvisor",
-			Tags:    []string{"overlay", "cadvisor"},
+			Tags:    []string{"overlay", "cadvisor", osClient.Auth.Region},
 			Port:    8080,
 			Address: sw.IP[0],
 		}
 
-		overlayObj.consulClient.RegisterService(serviceProm)
-		overlayObj.consulClient.RegisterService(serviceCadvisor)
+		overlayObj.ConsulClient.RegisterService(serviceProm)
+		overlayObj.ConsulClient.RegisterService(serviceCadvisor)
 	}
 
 	for sw, connections := range overlay {
