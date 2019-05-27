@@ -2,7 +2,7 @@
  * File              : main.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 29.04.2019
- * Last Modified Date: 24.05.2019
+ * Last Modified Date: 26.05.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -261,6 +261,7 @@ func main() {
 					Name:  "flows",
 					Usage: "Delete all of the flows",
 					Action: func(c *cli.Context) error {
+						ReadInitialConfiguration(topology, config)
 						ryuClient.DeleteAll()
 						return nil
 					},
@@ -268,7 +269,16 @@ func main() {
 				{
 					Name:  "app",
 					Usage: "Delete Currently Deployed Apps",
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:        "file",
+							Value:       "./configs/apps.yaml",
+							Usage:       "Apps File Location",
+							Destination: &appsConfig,
+						},
+					},
 					Action: func(c *cli.Context) error {
+						ReadInitialConfiguration(topology, config)
 						fmt.Println("Deploy an application")
 						var result []interface{}
 						buffer, err := ioutil.ReadFile(appsConfig)
@@ -288,6 +298,7 @@ func main() {
 					Name:  "services",
 					Usage: "Deregister All Services in Consul",
 					Action: func(c *cli.Context) error {
+						ReadInitialConfiguration(topology, config)
 						for _, host := range overlayObj.Hosts {
 							serviceCadvisor := &utils.Service{
 								Name: host.Name + "-cadvisor",
