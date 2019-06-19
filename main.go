@@ -2,7 +2,7 @@
  * File              : main.go
  * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
  * Date              : 29.04.2019
- * Last Modified Date: 26.05.2019
+ * Last Modified Date: 18.06.2019
  * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -128,7 +128,7 @@ func main() {
 						if err != nil {
 							return errors.Wrap(err, "An error occured while parsing YAML")
 						}
-						overlay.DeployVNFs(osClientD, result)
+						overlay.DeployVNFs(*overlayObj, result)
 						return nil
 					},
 				},
