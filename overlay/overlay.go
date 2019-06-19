@@ -2,7 +2,7 @@
 * File              : overlay.go
 * Author            : Iman Tabrizian <iman.tabrizian@gmail.com>
 * Date              : 10.04.2019
-* Last Modified Date: 26.05.2019
+* Last Modified Date: 18.06.2019
 * Last Modified By  : Iman Tabrizian <iman.tabrizian@gmail.com>
  */
 
@@ -55,6 +55,16 @@ func NewOverlay(overlayObject map[string]interface{}, ryuClient *utils.RyuClient
 	overlay.Switches = ExtractSWs(overlay.overlayObject)
 
 	return overlay
+}
+
+func (overlay *Overlay) GetGateway() Host {
+	for _, host := range overlay.Hosts {
+		if host.Gateway == true {
+			return host
+		}
+	}
+
+	return Host{}
 }
 
 func generateVNI() int {
